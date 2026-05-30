@@ -419,12 +419,12 @@
   // Rei moon-portrait palette (lavender / crimson / moonlight blue / hot pink / violet)
   // — assigned per detected face for box stroke + label fill, with neon glow.
   const NEON_PALETTE = [
-    '#7a7aff',  // pale lavender (Rei hair)
-    '#e02838',  // crimson (Rei iris)
-    '#3a85f5',  // electric moonlight blue
-    '#ff5290',  // hot rose pink
-    '#9a5cff',  // saturated violet
-    '#3ad8d8',  // icy cyan
+    '#b026ff',  // neon purple
+    '#ff1744',  // electric crimson
+    '#00b3ff',  // cyan blue
+    '#ff1493',  // hot pink
+    '#9d00ff',  // vivid violet
+    '#00ffe0',  // aqua
   ];
 
   // Single cohesive spark color picked from a small cinematic palette,
@@ -869,12 +869,14 @@
       ctx.strokeRect(x, y, w, h);
       ctx.restore();
 
-      // label tag above box (also glowing)
+      // label tag above box: ID + codename (also glowing)
+      const idStr = 'ID:' + String(t.id).padStart(4, '0');
+      const tagText = idStr + ' │ ' + t.label;
       const fontPx = Math.max(8, Math.min(11, Math.round(w * 0.055)));
       ctx.font = `700 ${fontPx}px "JetBrains Mono", ui-monospace, monospace`;
       ctx.textBaseline = 'top';
       const padH = 5, padV = 3;
-      const tw = ctx.measureText(t.label).width;
+      const tw = ctx.measureText(tagText).width;
       const tagH = fontPx + padV * 2;
 
       ctx.save();
@@ -885,7 +887,19 @@
       ctx.restore();
 
       ctx.fillStyle = '#ffffff';
-      ctx.fillText(t.label, x + padH - 1, y - tagH - 1 + padV);
+      ctx.fillText(tagText, x + padH - 1, y - tagH - 1 + padV);
+
+      // live coordinate readout — bottom-right corner (CCTV timestamp style)
+      const coordStr = 'X:' + String(Math.round(t.cx)).padStart(4, '0') +
+                       ' Y:' + String(Math.round(t.cy)).padStart(4, '0') + ' ▲';
+      ctx.save();
+      ctx.font = `700 ${Math.max(7, fontPx - 1)}px "JetBrains Mono", ui-monospace, monospace`;
+      ctx.textAlign = 'right';
+      ctx.shadowColor = col;
+      ctx.shadowBlur = 6;
+      ctx.fillStyle = col;
+      ctx.fillText(coordStr, x + w, y + h + 3);
+      ctx.restore();
 
       visible++;
     }
