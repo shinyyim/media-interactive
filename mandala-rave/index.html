@@ -1,0 +1,1054 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>bloom.field — radial sigil</title>
+<meta name="viewport" content="width=1920">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #000;
+  --ink: #f4f1e8;
+  --dim: rgba(244, 241, 232, 0.45);
+}
+* { box-sizing: border-box; }
+html, body {
+  margin: 0; padding: 0; height: 100%; overflow: hidden;
+  color: var(--ink);
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  /* body bg extends the stage's radial glow into the letterbox area top/bottom */
+  background:
+    radial-gradient(ellipse 70% 60% at 50% 50%, rgba(90, 60, 170, 0.18) 0%, rgba(40, 20, 90, 0.08) 35%, rgba(0, 0, 0, 0) 65%),
+    radial-gradient(ellipse 120% 120% at 50% 50%, #0a0418 0%, #000 75%);
+}
+body.idle { cursor: none; }
+
+#stage {
+  position: absolute; top: 0; left: 0;
+  width: 1920px; height: 1080px;
+  transform-origin: top left;
+  background: #000;
+  overflow: hidden;
+}
+
+canvas {
+  position: absolute; inset: 0;
+  width: 1920px; height: 1080px;
+}
+
+/* chamber glow under the sigil */
+#bg {
+  position: absolute; inset: 0;
+  background:
+    radial-gradient(circle at 50% 52%, rgba(90, 60, 170, 0.32) 0%, rgba(40, 20, 90, 0.12) 35%, rgba(0, 0, 0, 0.0) 65%),
+    radial-gradient(circle at 50% 50%, #0a0418 0%, #000 75%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.hud {
+  position: absolute;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  letter-spacing: 0.14em;
+  color: var(--dim);
+  text-transform: lowercase;
+  pointer-events: none;
+  z-index: 10;
+  line-height: 1.55;
+}
+.hud.tl { top: 36px; left: 40px; }
+.hud.tr { top: 36px; right: 40px; text-align: right; }
+.hud.bl { bottom: 36px; left: 40px; }
+.hud.br { bottom: 36px; right: 40px; text-align: right; }
+.hud .lbl { color: rgba(244, 241, 232, 0.25); }
+.hud .v   { color: rgba(220, 210, 255, 0.85); }
+
+/* mic enable overlay */
+#mic-overlay {
+  position: absolute; inset: 0; z-index: 100;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(0, 0, 0, 0.78);
+  cursor: pointer;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.18em;
+  text-transform: lowercase;
+  color: rgba(244, 241, 232, 0.85);
+  transition: opacity 0.6s;
+}
+#mic-overlay .box {
+  border: 1px solid rgba(200, 180, 255, 0.4);
+  padding: 36px 56px;
+  text-align: center;
+  font-size: 18px;
+  line-height: 1.8;
+  background: rgba(20, 10, 40, 0.4);
+  backdrop-filter: blur(4px);
+}
+#mic-overlay .box .small {
+  font-size: 11px;
+  color: rgba(200, 180, 255, 0.55);
+  margin-top: 12px;
+}
+#mic-overlay.hidden { opacity: 0; pointer-events: none; }
+
+/* CRT scanlines + glitch tint overlay */
+#scanlines {
+  position: absolute; inset: 0;
+  pointer-events: none;
+  z-index: 40;
+  background:
+    repeating-linear-gradient(
+      to bottom,
+      rgba(0, 0, 0, 0)    0px,
+      rgba(0, 0, 0, 0)    2px,
+      rgba(0, 0, 0, 0.22) 3px,
+      rgba(0, 0, 0, 0.22) 3px
+    );
+  mix-blend-mode: multiply;
+  opacity: 0.55;
+}
+#vignette {
+  position: absolute; inset: 0;
+  pointer-events: none;
+  z-index: 41;
+  background: radial-gradient(ellipse at center, rgba(0,0,0,0) 55%, rgba(0,0,0,0.55) 100%);
+}
+
+/* side-mounted segmented LED meters (tecktonik booth gauges) */
+:root { --neon: 150, 130, 255; }
+.meter {
+  position: absolute;
+  top: 110px; bottom: 110px;
+  width: 38px;
+  z-index: 38;
+  pointer-events: none;
+}
+.meter.left  { left:  36px; }
+.meter.right { right: 36px; }
+.meter .frame {
+  position: absolute; inset: 0;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 4px;
+  padding: 4px;
+  display: flex;
+  flex-direction: column-reverse;   /* segments stack from bottom up */
+  gap: 3px;
+  overflow: hidden;
+  background: rgba(0, 0, 0, 0.25);
+  box-shadow:
+    inset 0 0 12px rgba(0, 0, 0, 0.6),
+    0 0 1px rgba(255, 255, 255, 0.05);
+}
+.meter .seg {
+  flex: 1;
+  background: rgba(255, 255, 255, 0.045);
+  border-radius: 2px;
+  transition: background 60ms linear, box-shadow 60ms linear;
+}
+.meter .seg.on {
+  background: rgb(var(--neon));
+  box-shadow:
+    0 0 6px  rgba(var(--neon), 0.95),
+    0 0 14px rgba(var(--neon), 0.55),
+    inset 0 0 4px rgba(255, 255, 255, 0.45);
+}
+.meter .label {
+  position: absolute;
+  bottom: -26px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 10px;
+  letter-spacing: 0.32em;
+  color: rgba(244, 241, 232, 0.45);
+  text-transform: lowercase;
+  white-space: nowrap;
+}
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="bg"></div>
+  <canvas id="c" width="1920" height="1080"></canvas>
+  <div id="scanlines"></div>
+  <div id="vignette"></div>
+
+  <div class="hud tr">
+    <span class="lbl">fold</span> <span class="v" id="hud-fold">12</span>
+  </div>
+
+  <!-- side-mounted segmented LED meters -->
+  <div class="meter left">
+    <div class="frame" id="meter-bass"></div>
+    <div class="label">bass</div>
+  </div>
+  <div class="meter right">
+    <div class="frame" id="meter-treble"></div>
+    <div class="label">treble</div>
+  </div>
+  <div class="hud bl">
+    <span class="lbl">[space]</span> reseed &nbsp;
+    <span class="lbl">[c]</span> clear &nbsp;
+    <span class="lbl">[+/-]</span> fold &nbsp;
+    <span class="lbl">[a]</span> auto &nbsp;
+    <span class="lbl">[m]</span> mic
+  </div>
+  <div class="hud br" id="hud-status">
+    <span class="lbl">input</span> <span class="v">mouse</span>
+  </div>
+</div>
+
+<!-- mic enable overlay -->
+<div id="mic-overlay">
+  <div class="box">
+    click to enable microphone<br>
+    <span class="small">live audio → bass · mid · treble · beat</span><br>
+    <span class="small">(skip with [esc] to use mouse only)</span>
+  </div>
+</div>
+
+<script>
+// ╔══════════════════════════════════════════════════════════════════════╗
+// ║  MANDALA-RAVE                                                        ║
+// ║  Audio-reactive radial sigil — see README.md and ARCHITECTURE.md     ║
+// ║                                                                      ║
+// ║  Quick customization pointers:                                       ║
+// ║    Mandala symmetry      → let FOLD = 12                             ║
+// ║    Curve count           → const N = 7        (// CURVES section)    ║
+// ║    Mandala hue range     → baseHue = 120 + oscT * 200  (in tick)     ║
+// ║    BG hue range          → pinkHue = 312 + bgOsc * 28  (in tick)     ║
+// ║    Glitch sequence       → PATTERN_CYCLE      (// GLITCH section)    ║
+// ║    Ring radii            → R_TICK, R_TEXT_IN, … (in renderOrbits)    ║
+// ║    Outer text content    → farLabel           (in renderOrbits)      ║
+// ║    Inner text content    → label              (in renderOrbits)      ║
+// ║    Beat sensitivity      → bass > bassEMA * 1.35 (in analyzeAudio)   ║
+// ╚══════════════════════════════════════════════════════════════════════╝
+
+
+// ══════════════════════════════════════════════════════════════════════
+// 1. STAGE + CANVAS SETUP
+// ══════════════════════════════════════════════════════════════════════
+
+// ── fit 1920×1080 stage to window ──────────────────────────────────────
+const stage = document.getElementById('stage');
+function fit() {
+  const s = Math.min(innerWidth / 1920, innerHeight / 1080);
+  stage.style.transform = `scale(${s})`;
+  stage.style.left = (innerWidth  - 1920 * s) / 2 + 'px';
+  stage.style.top  = (innerHeight - 1080 * s) / 2 + 'px';
+}
+addEventListener('resize', fit);
+fit();
+
+// ── canvas ─────────────────────────────────────────────────────────────
+const cnv = document.getElementById('c');
+const ctx = cnv.getContext('2d');
+const W = cnv.width, H = cnv.height;
+const CX = W / 2, CY = H / 2;
+
+ctx.fillStyle = '#000';
+ctx.fillRect(0, 0, W, H);
+
+// ── state ──────────────────────────────────────────────────────────────
+let FOLD       = 12;
+let phase      = 0;
+let autoEvolve = true;
+let hueT       = 0;       // gradual hue cycle, ~2.3 min per full circuit
+let satAng1    = 0;       // accumulating angle for inner satellite ring (550)
+let satAng2    = 0;       // accumulating angle for outer satellite ring (570)
+
+function hslToRgb(h, s, l) {
+  s /= 100; l /= 100;
+  const C = (1 - Math.abs(2 * l - 1)) * s;
+  const X = C * (1 - Math.abs((h / 60) % 2 - 1));
+  const m = l - C / 2;
+  let r, g, b;
+  if      (h < 60)  { r = C; g = X; b = 0; }
+  else if (h < 120) { r = X; g = C; b = 0; }
+  else if (h < 180) { r = 0; g = C; b = X; }
+  else if (h < 240) { r = 0; g = X; b = C; }
+  else if (h < 300) { r = X; g = 0; b = C; }
+  else              { r = C; g = 0; b = X; }
+  return [((r + m) * 255) | 0, ((g + m) * 255) | 0, ((b + m) * 255) | 0];
+}
+let mouseX = 0.5, mouseY = 0.5;     // 0..1
+let energy = 0.5;                   // smoothed mouse-y
+let drift  = 0.5;                   // smoothed mouse-x
+
+const hudFold     = document.getElementById('hud-fold');
+const hudStatus   = document.getElementById('hud-status');
+const meterBassEl   = document.getElementById('meter-bass');
+const meterTrebleEl = document.getElementById('meter-treble');
+
+// build segmented LED meters once
+const SEG_COUNT = 20;
+const segBass   = [];
+const segTreble = [];
+for (let i = 0; i < SEG_COUNT; i++) {
+  const a = document.createElement('div'); a.className = 'seg';
+  const b = document.createElement('div'); b.className = 'seg';
+  meterBassEl.appendChild(a);   segBass.push(a);
+  meterTrebleEl.appendChild(b); segTreble.push(b);
+}
+function setMeter(segs, level) {
+  const lit = Math.round(Math.min(1, Math.max(0, level)) * SEG_COUNT);
+  for (let i = 0; i < SEG_COUNT; i++) {
+    if ((segs[i].classList.contains('on')) !== (i < lit)) {
+      segs[i].classList.toggle('on', i < lit);
+    }
+  }
+}
+// smoothing
+let bassDisp = 0, trebleDisp = 0;
+
+// ══════════════════════════════════════════════════════════════════════
+// 2. AUDIO PIPELINE  (Web Audio API → bass / mid / treble + beat detect)
+// ══════════════════════════════════════════════════════════════════════
+
+// ── audio ──────────────────────────────────────────────────────────────
+let audioReady = false;
+let analyser   = null;
+let freqData   = null;
+let bass = 0, mid = 0, treble = 0, rmsLv = 0;
+let bassEMA = 0;
+let beatPulse = 0;
+
+async function enableMic() {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false }
+    });
+    const AC = window.AudioContext || window.webkitAudioContext;
+    const ac = new AC();
+    if (ac.state === 'suspended') await ac.resume();
+    const src = ac.createMediaStreamSource(stream);
+    analyser = ac.createAnalyser();
+    analyser.fftSize = 2048;
+    analyser.smoothingTimeConstant = 0.55;
+    src.connect(analyser);
+    freqData = new Uint8Array(analyser.frequencyBinCount);
+    audioReady = true;
+    document.getElementById('mic-overlay').classList.add('hidden');
+    hudStatus.innerHTML = '<span class="lbl">input</span> <span class="v">mic · live</span>';
+  } catch (e) {
+    console.error(e);
+    hudStatus.innerHTML = '<span class="lbl">input</span> <span class="v">mic denied — using mouse</span>';
+    document.getElementById('mic-overlay').classList.add('hidden');
+  }
+}
+
+function avg(arr, lo, hi) {
+  let s = 0;
+  for (let i = lo; i < hi; i++) s += arr[i];
+  return s / (hi - lo) / 255;
+}
+
+function analyzeAudio() {
+  if (!audioReady) return;
+  analyser.getByteFrequencyData(freqData);
+  // fftSize=2048, sr≈48kHz → ~23Hz per bin
+  // bass:   ~20–230Hz   bins 1–10
+  // mid:    ~230Hz–2kHz bins 10–90
+  // treble: ~2kHz–8kHz  bins 90–350
+  bass   = avg(freqData, 1, 10);
+  mid    = avg(freqData, 10, 90);
+  treble = avg(freqData, 90, 350);
+  rmsLv  = avg(freqData, 1, 400);
+
+  // beat detection — slightly more sensitive trigger, faster decay for punch
+  bassEMA = bassEMA * 0.90 + bass * 0.10;
+  if (bass > bassEMA * 1.35 && bass > 0.18) beatPulse = 1;
+  beatPulse *= 0.82;
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// 3. GLITCH SYSTEM  (choreographed 8-step cycle advancing on bass beats)
+// ══════════════════════════════════════════════════════════════════════
+
+// ── glitch system (CHOREOGRAPHED EDM RAVE) ─────────────────────────────
+// Beat-counter advances through a fixed 12-step pattern cycle. Feels
+// composed, not random. Ambient mode (no audio) advances the cycle on
+// fake beats so the choreography still plays without sound.
+const glitches = [];
+let lastGlitchTime = 0;
+let beatIdx        = 0;
+let prevBeatPulse  = 0;
+
+const PATTERN_CYCLE = [
+  'shockwave',     // 1  rings exploding from center
+  'rings',         // 2  concentric rings (slower than shockwave)
+  'shockwave',     // 3
+  'radar',         // 4  single rotating beam
+  'shockwave',     // 5
+  'rings',         // 6
+  'radar',         // 7
+  'strobe',        // 8  full white flash (downbeat / drop)
+];
+
+function spawnGlitch(type, intensity) {
+  const g = { type, t: 1, decay: 0.20, intensity, params: {} };
+
+  if (type === 'shockwave') {
+    g.params = {
+      r:         20,
+      dr:        26 + intensity * 14,
+      count:     3 + Math.floor(Math.random() * 3),
+      thickness: 4 + intensity * 4,
+    };
+    g.decay = 0.020;                // ~50 frames so wave fully expands
+  } else if (type === 'rings') {
+    g.params = {
+      r:         60 + Math.random() * 80,
+      dr:        12 + Math.random() * 8,
+      count:     3 + Math.floor(Math.random() * 3),
+      thickness: 2 + Math.random() * 2,
+    };
+    g.decay = 0.035;
+  } else if (type === 'strobe') {
+    g.params = { intensity: 0.55 + intensity * 0.4 };
+    g.decay = 0.28;                 // ~4 frames flash
+  } else if (type === 'radar') {
+    g.params = {
+      ang:       Math.random() * Math.PI * 2,
+      av:        (Math.random() < 0.5 ? 1 : -1) * (0.04 + intensity * 0.05),
+      len:       640,
+      thickness: 2 + intensity * 3.5,
+    };
+    g.decay = 0.014;                // ~70 frames so it can sweep
+  }
+
+  glitches.push(g);
+}
+
+function maybeTriggerGlitch(now) {
+  // rising edge of beatPulse = one beat event
+  const beatRising = beatPulse > 0.65 && prevBeatPulse < 0.55;
+  prevBeatPulse = beatPulse;
+
+  if (!beatRising) return;
+  if (now - lastGlitchTime < 90) return;
+  lastGlitchTime = now;
+
+  // advance through the choreographed cycle
+  const type = PATTERN_CYCLE[beatIdx % PATTERN_CYCLE.length];
+  beatIdx++;
+  spawnGlitch(type, beatPulse);
+}
+
+function renderGlitch() {
+  for (let i = glitches.length - 1; i >= 0; i--) {
+    const g = glitches[i];
+    drawOneGlitch(g);
+    g.t -= g.decay;
+    if (g.t <= 0) glitches.splice(i, 1);
+  }
+}
+
+function drawOneGlitch(g) {
+  const { type, t, params, intensity } = g;
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+
+  if (type === 'shockwave') {
+    // multiple concentric rings expanding rapidly from center
+    ctx.strokeStyle = `rgba(255,255,255,${(t * 0.70).toFixed(3)})`;
+    ctx.lineWidth = params.thickness;
+    for (let i = 0; i < params.count; i++) {
+      const r = params.r + i * 70;
+      ctx.beginPath();
+      ctx.arc(CX, CY, r, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    // wide glow halo behind the leading ring
+    ctx.strokeStyle = `rgba(255,255,255,${(t * 0.25).toFixed(3)})`;
+    ctx.lineWidth = params.thickness * 3.5;
+    ctx.beginPath();
+    ctx.arc(CX, CY, params.r, 0, Math.PI * 2);
+    ctx.stroke();
+    params.r += params.dr;
+
+  } else if (type === 'rings') {
+    ctx.strokeStyle = `rgba(255,255,255,${(t * 0.55).toFixed(3)})`;
+    ctx.lineWidth = params.thickness;
+    for (let i = 0; i < params.count; i++) {
+      ctx.beginPath();
+      ctx.arc(CX, CY, params.r + i * 60, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    params.r += params.dr;
+
+  } else if (type === 'strobe') {
+    ctx.fillStyle = `rgba(255,255,255,${(t * params.intensity).toFixed(3)})`;
+    ctx.fillRect(0, 0, W, H);
+
+  } else if (type === 'radar') {
+    params.ang += params.av;
+    const ex = CX + Math.cos(params.ang) * params.len;
+    const ey = CY + Math.sin(params.ang) * params.len;
+    // soft halo
+    ctx.strokeStyle = `rgba(255,255,255,${(t * 0.25).toFixed(3)})`;
+    ctx.lineWidth = params.thickness * 4;
+    ctx.beginPath(); ctx.moveTo(CX, CY); ctx.lineTo(ex, ey); ctx.stroke();
+    // crisp core
+    ctx.strokeStyle = `rgba(255,255,255,${(t * 0.85).toFixed(3)})`;
+    ctx.lineWidth = params.thickness;
+    ctx.beginPath(); ctx.moveTo(CX, CY); ctx.lineTo(ex, ey); ctx.stroke();
+  }
+
+  ctx.restore();
+}
+
+// overlay click + esc skip
+document.getElementById('mic-overlay').addEventListener('click', enableMic);
+addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    document.getElementById('mic-overlay').classList.add('hidden');
+    hudStatus.innerHTML = '<span class="lbl">input</span> <span class="v">mouse</span>';
+  }
+  if (e.key === 'm' || e.key === 'M') {
+    if (!audioReady) {
+      document.getElementById('mic-overlay').classList.remove('hidden');
+    }
+  }
+});
+
+// ══════════════════════════════════════════════════════════════════════
+// 4. MANDALA CURVES  (N closed Lissajous paths drawn FOLD-fold + mirror)
+// ══════════════════════════════════════════════════════════════════════
+
+// ── curves ─────────────────────────────────────────────────────────────
+// Each curve defines a CLOSED path inside one wedge. Every frame the canvas
+// is cleared and every curve is drawn fresh as a single continuous polyline,
+// rotated + mirrored N times. No trail accumulation → no overlap mess.
+const N = 7;
+const STEPS = 220;   // points per closed curve (high → sharp peaks stay clean)
+const parts = [];
+
+function seed(p) {
+  // ~18% smaller radial range so peaks don't clip the screen edges
+  p.rBase    = 130 + Math.random() * 180;
+  p.rAmp     = 65  + Math.random() * 130;
+  p.rFreq    = 1 + Math.floor(Math.random() * 5);
+  p.aFreq    = 1 + Math.floor(Math.random() * 5);
+  p.aPhase   = Math.random() * Math.PI * 2;
+  p.rPhase   = Math.random() * Math.PI * 2;
+  p.aDrift   = (Math.random() - 0.5) * 0.0014;
+  p.rDrift   = (Math.random() - 0.5) * 0.0018;
+  p.width    = 1.10 + Math.random() * 1.20;
+  p.bright   = 0.24 + Math.random() * 0.22;
+  p.sharpA   = 0.32 + Math.random() * 0.55;
+  p.sharpR   = 0.45 + Math.random() * 0.55;
+  // outer-ring curve (smaller than before so it doesn't graze the edge)
+  if (Math.random() < 0.18) {
+    p.rBase = 340 + Math.random() * 50;
+    p.rAmp  = 25 + Math.random() * 45;
+    p.width = 0.9;
+    p.sharpA = 0.8;
+    p.sharpR = 0.8;
+  }
+}
+
+// sharpen a sin(x) wave: <1 = peaky spikes, =1 = smooth, >1 = flatter
+function sharpen(x, k) {
+  return Math.sign(x) * Math.pow(Math.abs(x), k);
+}
+
+for (let i = 0; i < N; i++) {
+  parts.push({});
+  seed(parts[i]);
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// 5. INPUT  (pointer, keyboard, mic enable / esc / m / +/- / space / c)
+// ══════════════════════════════════════════════════════════════════════
+
+// ── input ──────────────────────────────────────────────────────────────
+addEventListener('pointermove', (e) => {
+  const rect = stage.getBoundingClientRect();
+  mouseX = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+  mouseY = Math.max(0, Math.min(1, (e.clientY - rect.top)  / rect.height));
+});
+
+addEventListener('keydown', (e) => {
+  if (e.code === 'Space')         { for (const p of parts) seed(p); }
+  else if (e.key === 'c' || e.key === 'C') {
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, W, H);
+  }
+  else if (e.key === '+' || e.key === '=') { FOLD = Math.min(24, FOLD + 1); hudFold.textContent = FOLD; }
+  else if (e.key === '-' || e.key === '_') { FOLD = Math.max(3,  FOLD - 1); hudFold.textContent = FOLD; }
+  else if (e.key === 'a' || e.key === 'A') { autoEvolve = !autoEvolve; }
+});
+
+// auto-reseed cadence
+let lastReseed = 0;
+
+// ══════════════════════════════════════════════════════════════════════
+// 6. ORBITAL DETAIL LAYER  (rings, ticks, text, satellites, orbit dots)
+// ══════════════════════════════════════════════════════════════════════
+
+// ── orbital detail layer — 6 evenly-spaced rings (40px apart) ──────────
+function renderOrbits() {
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+
+  const baseRot = phase * 8;
+  const orbE    = 0.55 + energy * 0.45 + beatPulse * 0.35;
+
+  // start at 480, ticks→text gap 30, then diamonds/sats/outer-text 20 apart
+  const R_TICK     = 480;
+  const R_TEXT_IN  = 510;   // +30
+  const R_DIAMOND  = 530;   // +20
+  const R_SAT1     = 550;   // +20
+  const R_SAT2     = 570;   // +20
+  const R_TEXT_OUT = 600;   // +30
+
+  // 0. RADIAL SPOKES — FOLD rays from near-center to the outermost ring
+  const SPOKE_COUNT = FOLD;
+  const spokeIn   = 30;
+  const spokeOut  = 800;
+  const spokeRot  = baseRot * 0.03;
+  ctx.strokeStyle = `rgba(255,255,255,${(0.25 * orbE).toFixed(3)})`;
+  ctx.lineWidth = 0.9;
+  for (let i = 0; i < SPOKE_COUNT; i++) {
+    const a  = (i / SPOKE_COUNT) * Math.PI * 2 + spokeRot;
+    const ca = Math.cos(a), sa = Math.sin(a);
+    ctx.beginPath();
+    ctx.moveTo(CX + ca * spokeIn,  CY + sa * spokeIn);
+    ctx.lineTo(CX + ca * spokeOut, CY + sa * spokeOut);
+    ctx.stroke();
+  }
+
+  // 0b. tick marks at radius 740 + faint base ring underneath
+  const tick740R   = 740;
+  const tick740Rot = -baseRot * 0.10;             // slow counter-rotation
+  // faint guide line that the ticks sit on
+  ctx.strokeStyle = `rgba(255,255,255,${(0.18 * orbE).toFixed(3)})`;
+  ctx.lineWidth = 1.0;
+  ctx.beginPath();
+  ctx.arc(CX, CY, tick740R, 0, Math.PI * 2);
+  ctx.stroke();
+  // ticks
+  ctx.strokeStyle = `rgba(255,255,255,${(0.42 * orbE).toFixed(3)})`;
+  ctx.lineWidth = 1.3;
+  const tick740Count = 72;
+  for (let i = 0; i < tick740Count; i++) {
+    const a   = (i / tick740Count) * Math.PI * 2 + tick740Rot;
+    const len = (i % 6 === 0) ? 14 : 6;
+    const ca  = Math.cos(a), sa = Math.sin(a);
+    ctx.beginPath();
+    ctx.moveTo(CX + ca * tick740R,         CY + sa * tick740R);
+    ctx.lineTo(CX + ca * (tick740R + len), CY + sa * (tick740R + len));
+    ctx.stroke();
+  }
+
+  // 0c. outer solid ring
+  ctx.strokeStyle = `rgba(255,255,255,${(0.24 * orbE).toFixed(3)})`;
+  ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  ctx.arc(CX, CY, 800, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // 0d. ONE rhythmic particle per spoke — oscillates between a pair of rings
+  const RING_PAIRS = [
+    [120, 800], [480, 740], [200, 600],
+    [550, 800], [300, 740], [ 70, 480],
+  ];
+  for (let i = 0; i < SPOKE_COUNT; i++) {
+    const a  = (i / SPOKE_COUNT) * Math.PI * 2 + spokeRot;
+    const ca = Math.cos(a), sa = Math.sin(a);
+    const seed   = i * 7;
+    const speed  = 0.6 + ((seed % 19) / 19) * 1.4;
+    const offset = (seed * 0.43) % (Math.PI * 2);
+    const t      = phase * 5 * speed + offset + beatPulse * 0.6;
+    const [rIn, rOut] = RING_PAIRS[i % RING_PAIRS.length];
+    const k = (Math.cos(t) + 1) * 0.5;
+    const r = rIn + (rOut - rIn) * k;
+    const alpha = (0.65 + beatPulse * 0.35) * orbE;
+    ctx.fillStyle = `rgba(255,255,255,${alpha.toFixed(3)})`;
+    ctx.beginPath();
+    ctx.arc(CX + ca * r, CY + sa * r, 2.5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // 0e. one orbit point traveling along each of the two outer rings
+  const orbitAlpha = (0.90 * orbE).toFixed(3);
+  ctx.fillStyle = `rgba(255,255,255,${orbitAlpha})`;
+  // ring 740 — counter-rotating, slower
+  const o740 = -baseRot * 0.45;
+  ctx.beginPath();
+  ctx.arc(CX + Math.cos(o740) * 740, CY + Math.sin(o740) * 740, 3.2, 0, Math.PI * 2);
+  ctx.fill();
+  // ring 800 — forward rotating, slightly faster
+  const o800 = baseRot * 0.30;
+  ctx.beginPath();
+  ctx.arc(CX + Math.cos(o800) * 800, CY + Math.sin(o800) * 800, 3.2, 0, Math.PI * 2);
+  ctx.fill();
+
+  // 1. RING 440 — tick marks (60 ticks, every 5th longer)
+  const tickRot = baseRot * 0.40;
+  ctx.strokeStyle = `rgba(255,255,255,${(0.40 * orbE).toFixed(3)})`;
+  ctx.lineWidth = 1.2;
+  for (let i = 0; i < 60; i++) {
+    const a   = (i / 60) * Math.PI * 2 + tickRot;
+    const len = (i % 5 === 0) ? 12 : 5;
+    const ca  = Math.cos(a), sa = Math.sin(a);
+    ctx.beginPath();
+    ctx.moveTo(CX + ca * R_TICK,         CY + sa * R_TICK);
+    ctx.lineTo(CX + ca * (R_TICK + len), CY + sa * (R_TICK + len));
+    ctx.stroke();
+  }
+
+  // 2. RING 480 — inner curved text
+  const textRot = baseRot * 0.15;
+  const label   = '▸ THE FINAL WALL IS THE SELF · BOUNDARY OF THE SELF IS THE FIRST WOUND · ALL SOULS RETURN TO ONE · COMPLETION REQUIRES COLLAPSE · ';
+  ctx.fillStyle = `rgba(255,255,255,${(0.55 * orbE).toFixed(3)})`;
+  ctx.font = '12px "JetBrains Mono", monospace';
+  ctx.textAlign    = 'center';
+  ctx.textBaseline = 'middle';
+  for (let i = 0; i < label.length; i++) {
+    const ch = label[i];
+    if (ch === ' ') continue;
+    const a = (i / label.length) * Math.PI * 2 + textRot;
+    ctx.save();
+    ctx.translate(CX, CY);
+    ctx.rotate(a + Math.PI / 2);
+    ctx.fillText(ch, 0, -R_TEXT_IN);
+    ctx.restore();
+  }
+
+  // 3. RING 520 — 8 diamond markers at every 45°
+  const diamondRot = baseRot * 0.05;
+  ctx.strokeStyle = `rgba(255,255,255,${(0.55 * orbE).toFixed(3)})`;
+  ctx.lineWidth = 1.2;
+  for (let i = 0; i < 8; i++) {
+    const a  = i * (Math.PI / 4) + diamondRot;
+    const cx = CX + Math.cos(a) * R_DIAMOND;
+    const cy = CY + Math.sin(a) * R_DIAMOND;
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(a + Math.PI / 4);
+    const sz = 10;
+    ctx.strokeRect(-sz / 2, -sz / 2, sz, sz);
+    ctx.fillStyle = `rgba(255,255,255,${(0.85 * orbE).toFixed(3)})`;
+    ctx.beginPath();
+    ctx.arc(0, 0, 1.3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // beat-reactive speed multiplier for the two inner satellite rings
+  // (rest at speed 1, bass + beat push it up to ~3.5×)
+  const beatBoost = 1 + bass * 1.6 + beatPulse * 1.1;
+  satAng1 -= 0.020 * beatBoost;            // counter-rotation, beat-reactive
+  satAng2 += 0.013 * beatBoost;            // forward rotation, beat-reactive
+
+  // 4. RING 550 — satellite orbit (faint track + 3 large dots)
+  ctx.strokeStyle = `rgba(255,255,255,${(0.14 * orbE).toFixed(3)})`;
+  ctx.lineWidth = 0.8;
+  ctx.beginPath();
+  ctx.arc(CX, CY, R_SAT1, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.fillStyle = `rgba(255,255,255,${(0.75 * orbE).toFixed(3)})`;
+  for (let i = 0; i < 3; i++) {
+    const a = i * (Math.PI * 2 / 3) + satAng1;
+    ctx.beginPath();
+    ctx.arc(CX + Math.cos(a) * R_SAT1, CY + Math.sin(a) * R_SAT1, 2.8, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // 5. RING 570 — satellite orbit (faint track + 5 small dots)
+  ctx.strokeStyle = `rgba(255,255,255,${(0.14 * orbE).toFixed(3)})`;
+  ctx.lineWidth = 0.8;
+  ctx.beginPath();
+  ctx.arc(CX, CY, R_SAT2, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.fillStyle = `rgba(255,255,255,${(0.70 * orbE).toFixed(3)})`;
+  for (let i = 0; i < 5; i++) {
+    const a = i * (Math.PI * 2 / 5) + satAng2;
+    ctx.beginPath();
+    ctx.arc(CX + Math.cos(a) * R_SAT2, CY + Math.sin(a) * R_SAT2, 2.0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // 6. RING 640 — far outer curved text (technical readout, reverse rotation)
+  const farTextRot = -baseRot * 0.10;
+  const farLabel   = "GOD'S IN HIS HEAVEN · ALL'S RIGHT WITH THE WORLD · THE WALL BETWEEN US MUST FALL · ORDER WILL BE RESTORED · RETURN TO THE SOURCE · ";
+  ctx.fillStyle = `rgba(255,255,255,${(0.52 * orbE).toFixed(3)})`;
+  ctx.font = '15px "JetBrains Mono", monospace';
+  ctx.textAlign    = 'center';
+  ctx.textBaseline = 'middle';
+  for (let i = 0; i < farLabel.length; i++) {
+    const ch = farLabel[i];
+    if (ch === ' ') continue;
+    const a = (i / farLabel.length) * Math.PI * 2 + farTextRot;
+    ctx.save();
+    ctx.translate(CX, CY);
+    ctx.rotate(a + Math.PI / 2);
+    ctx.fillText(ch, 0, -R_TEXT_OUT);
+    ctx.restore();
+  }
+
+  ctx.restore();
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// 7. MAIN LOOP  (tick → audio → bg → curves → lasers → orbits → glitch)
+// ══════════════════════════════════════════════════════════════════════
+
+// ── main loop ──────────────────────────────────────────────────────────
+function tick(now) {
+  // pull live audio
+  analyzeAudio();
+  maybeTriggerGlitch(now);
+
+  // when mic is live: bass drives energy, treble drives drift.
+  // when not: mouse drives both. Also synth fake bass/mid/treble from mouseY
+  // so shape modulators still get a visible signal without audio.
+  const targetEnergy = audioReady ? Math.min(1, bass * 1.4 + rmsLv * 0.3) : mouseY;
+  const targetDrift  = audioReady ? Math.min(1, 0.3 + treble * 1.6 + mid * 0.4) : mouseX;
+  energy += (targetEnergy - energy) * 0.18;
+  drift  += (targetDrift  - drift)  * 0.10;
+
+  if (!audioReady) {
+    // synthesise shape inputs from mouse so the visual still morphs visibly
+    bass   = mouseY * 0.6;
+    mid    = mouseX * 0.7;
+    treble = (1 - mouseY) * 0.5;
+    // soft fake beats while moving
+    if (Math.random() < 0.008 * mouseY) beatPulse = 1;
+    beatPulse *= 0.86;
+  }
+
+  // ── mandala hue (still constrained: green ↔ pink, no yellow) ──────────
+  hueT += 0.00009;
+  const oscT          = (Math.sin(hueT * Math.PI * 2) + 1) * 0.5;
+  const baseHue       = 120 + oscT * 200;
+  const audioHueShift = bass * 14 - treble * 10;
+  const mainHue       = baseHue + audioHueShift;
+  const [colR, colG, colB] = hslToRgb(mainHue, 86 + treble * 10, 62 + beatPulse * 14);
+
+  // ── background: cyberpunk nested neon bands — violet ↔ magenta ↔ hot pink
+  // distinct hue jumps between stops so each band reads as its own color.
+  const bgOsc     = (Math.sin(hueT * Math.PI * 2 * 0.4) + 1) * 0.5;
+  const violetHue = 270 + bgOsc * 18;          // 270..288 (electric violet)
+  const pinkHue   = 328 + bgOsc * 14;          // 328..342 (hot pink)
+  // BG audio reactivity — bass and beat dominate, bigger swing
+  const audioBoost = bass * 16 + beatPulse * 26 + rmsLv * 4;
+  function bgStop(h, s, l) {
+    const [r, g, b] = hslToRgb(((h % 360) + 360) % 360, s, l);
+    return `rgb(${r},${g},${b})`;
+  }
+  ctx.globalCompositeOperation = 'source-over';
+  const grad = ctx.createRadialGradient(CX, CY, 30, CX, CY, 1150);
+  // smooth monotonic curve: black → violet → magenta → hot pink (no ring artifacts)
+  grad.addColorStop(0.00, bgStop(violetHue,    90,   0));                          // pure black
+  grad.addColorStop(0.42, bgStop(violetHue,    95,   5  + audioBoost * 0.25));     // soft violet pulses
+  grad.addColorStop(0.72, bgStop(310,         100,  24 + audioBoost * 0.65));      // magenta band — strong
+  grad.addColorStop(0.95, bgStop(pinkHue + 4, 100,  52 + audioBoost * 0.75));      // hot pink peak — strongest
+  grad.addColorStop(1.00, bgStop(pinkHue,     100,  44 + audioBoost * 0.55));      // edge pulse
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, H);
+
+  // gentle transparency veil — bg feels atmospheric, not opaque
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.20)';
+  ctx.fillRect(0, 0, W, H);
+
+  // mids subtly accelerate the global phase
+  phase += 0.00035 + drift * 0.0008 + mid * 0.0012;
+
+  const slice = (Math.PI * 2) / FOLD;
+
+  // ── shape modulators ─────────────────────────────────────────────────
+  const passiveR  = 1 + Math.sin(phase * 0.9)         * 0.12;
+  const passiveA  = 1 + Math.sin(phase * 0.55 + 1.3)  * 0.28;
+  const passiveSk =     Math.sin(phase * 0.7  + 2.1)  * 0.40;
+
+  // radius mod capped so curves stay inside the frame even on big drops
+  const radiusMod = Math.min(1.45, passiveR + beatPulse * 0.28 + treble * 0.16);
+  const angleMod  = passiveA + mid       * 0.75 + beatPulse * 0.20;
+  const phaseSkew = passiveSk + mid * 0.8 + beatPulse * 0.6;
+
+  ctx.lineCap  = 'round';
+  ctx.lineJoin = 'round';
+
+  const coreCol = `rgba(${colR},${colG},${colB},`;
+
+  // additive blend → glow stacks naturally
+  ctx.globalCompositeOperation = 'lighter';
+
+  // helper: stroke the curve at FOLD rotations + mirror, with optional offset
+  function strokeAllCopies(pts, dx, dy) {
+    for (let k = 0; k < FOLD; k++) {
+      const ang = k * slice;
+      const cs = Math.cos(ang), sn = Math.sin(ang);
+      ctx.beginPath();
+      for (let s = 0; s < pts.length; s++) {
+        const [bx, by] = pts[s];
+        const x = CX + bx * cs - by * sn + dx;
+        const y = CY + bx * sn + by * cs + dy;
+        if (s === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+      ctx.beginPath();
+      for (let s = 0; s < pts.length; s++) {
+        const [bx, by] = pts[s];
+        const x = CX + (-bx) * cs - by * sn + dx;
+        const y = CY + (-bx) * sn + by * cs + dy;
+        if (s === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+    }
+  }
+
+  // chromatic aberration triggers on strong beats OR randomly (techno glitch)
+  const glitchActive = beatPulse > 0.30 || Math.random() < 0.012;
+  const chromaShift  = glitchActive ? (3 + beatPulse * 9 + Math.random() * 3) : 0;
+
+  // draw every curve as one continuous closed path, rotated + mirrored N times
+  for (const p of parts) {
+    p.rPhase += p.rDrift + bass * 0.008 + beatPulse * 0.012;
+    p.aPhase += p.aDrift + mid  * 0.005;
+
+    // 1) compute the wedge-local closed curve once.
+    //    sharpened sin → star-point peaks instead of soft sinusoidal petals.
+    const pts = [];
+    for (let s = 0; s <= STEPS; s++) {
+      const t = (s / STEPS) * Math.PI * 2;
+      const aRaw = Math.sin(t * p.aFreq + p.aPhase + phaseSkew);
+      const rRaw = Math.sin(t * p.rFreq + p.rPhase);
+      const localA = (0.5 + 0.5 * sharpen(aRaw, p.sharpA)) * slice * angleMod;
+      const r      = (p.rBase + sharpen(rRaw, p.sharpR) * p.rAmp) * radiusMod;
+      pts.push([
+        Math.cos(localA - slice / 2 + Math.PI / 2) * r,
+        Math.sin(localA - slice / 2 + Math.PI / 2) * r,
+      ]);
+    }
+
+    // 2a) outer halo (thick, low alpha) — gives soft neon glow
+    ctx.lineWidth   = p.width * 5.5;
+    ctx.strokeStyle = coreCol + (p.bright * 0.10).toFixed(3) + ')';
+    strokeAllCopies(pts, 0, 0);
+
+    // 2b) mid glow
+    ctx.lineWidth   = p.width * 2.4;
+    ctx.strokeStyle = coreCol + (p.bright * 0.30).toFixed(3) + ')';
+    strokeAllCopies(pts, 0, 0);
+
+    // 2c) crisp core — brighter than the base color (push toward white)
+    const cR = Math.min(255, colR + 60), cG = Math.min(255, colG + 60), cB = Math.min(255, colB + 30);
+    ctx.lineWidth   = p.width * (1 + beatPulse * 0.4);
+    ctx.strokeStyle = `rgba(${cR},${cG},${cB},${(p.bright * (1 + beatPulse * 0.8)).toFixed(3)})`;
+    strokeAllCopies(pts, 0, 0);
+
+    // 2d) chromatic aberration — RGB split on glitch
+    if (chromaShift > 0) {
+      const a = (p.bright * 0.55 * Math.min(1, beatPulse + 0.4)).toFixed(3);
+      ctx.lineWidth = p.width * 0.9;
+      ctx.strokeStyle = `rgba(255, 50, 90, ${a})`;
+      strokeAllCopies(pts,  chromaShift, 0);
+      ctx.strokeStyle = `rgba(60, 220, 255, ${a})`;
+      strokeAllCopies(pts, -chromaShift, 0);
+    }
+  }
+
+  // ── radial laser spokes — FOLD beams firing from center, beat-reactive
+  const beamE = energy * 0.30 + treble * 0.5 + beatPulse * 1.1;
+  if (beamE > 0.18) {
+    const beamLen = 520 + beatPulse * 220;
+    // outer halo beam (wide soft)
+    ctx.lineWidth   = 6 + beatPulse * 9;
+    ctx.strokeStyle = `rgba(${colR},${Math.min(255,colG+40)},${colB},${(beamE * 0.06).toFixed(3)})`;
+    for (let k = 0; k < FOLD; k++) {
+      const ang = k * slice + Math.PI / 2;
+      const x0 = CX + Math.cos(ang) * 40;
+      const y0 = CY + Math.sin(ang) * 40;
+      const x1 = CX + Math.cos(ang) * beamLen;
+      const y1 = CY + Math.sin(ang) * beamLen;
+      ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
+    }
+    // crisp core beam (white hot)
+    ctx.lineWidth   = 0.9 + beatPulse * 1.6;
+    ctx.strokeStyle = `rgba(255, 255, 255, ${(beamE * 0.50).toFixed(3)})`;
+    for (let k = 0; k < FOLD; k++) {
+      const ang = k * slice + Math.PI / 2;
+      const x0 = CX + Math.cos(ang) * 55;
+      const y0 = CY + Math.sin(ang) * 55;
+      const x1 = CX + Math.cos(ang) * beamLen;
+      const y1 = CY + Math.sin(ang) * beamLen;
+      ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
+    }
+  }
+
+  // orbital detail layer (rotating ticks, curved text, satellites, brackets)
+  renderOrbits();
+
+  // choreographed glitch overlay (shockwave, rings, radar, strobe)
+  renderGlitch();
+
+  ctx.globalCompositeOperation = 'source-over';
+
+  // bright joint sparkles — flash on beat / treble
+  const sparkleRate = energy * 0.6 + treble * 1.8 + beatPulse * 2.2;
+  const sparkleCount = Math.min(20, Math.floor(sparkleRate));
+  for (let i = 0; i < sparkleCount; i++) {
+    const p = parts[(Math.random() * parts.length) | 0];
+    const t = Math.random() * Math.PI * 2;
+    const localA = (0.5 + 0.5 * Math.sin(t * p.aFreq + p.aPhase + phaseSkew)) * slice * angleMod;
+    const r      = (p.rBase + Math.sin(t * p.rFreq + p.rPhase) * p.rAmp) * radiusMod;
+    const bx = Math.cos(localA - slice / 2 + Math.PI / 2) * r;
+    const by = Math.sin(localA - slice / 2 + Math.PI / 2) * r;
+    const k = (Math.random() * FOLD) | 0;
+    const ang = k * slice;
+    const cs = Math.cos(ang), sn = Math.sin(ang);
+    ctx.fillStyle = `rgba(255,255,255,${0.55 + Math.random() * 0.4})`;
+    ctx.beginPath();
+    ctx.arc(CX + bx * cs - by * sn, CY + bx * sn + by * cs, 0.8 + Math.random() * 1.6, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // slow autonomous evolution + audio-driven morphing
+  if (autoEvolve) {
+    const interval = audioReady ? 6000 : 16000;
+    if (now - lastReseed > interval + Math.random() * 8000) {
+      const k = 3 + Math.floor(Math.random() * 6);
+      for (let i = 0; i < k; i++) seed(parts[(Math.random() * parts.length) | 0]);
+      lastReseed = now;
+    }
+  }
+  // strong beats nudge a single particle's shape — accumulates audio history
+  if (audioReady && beatPulse > 0.85 && Math.random() < 0.4) {
+    seed(parts[(Math.random() * parts.length) | 0]);
+  }
+
+  // side LED meters (left = bass, right = treble)
+  const bassLvl   = audioReady ? bass   : (mouseY) * 0.7;
+  const trebleLvl = audioReady ? treble : (1 - mouseY) * 0.6;
+  bassDisp   += (bassLvl   - bassDisp)   * 0.25;
+  trebleDisp += (trebleLvl - trebleDisp) * 0.25;
+  setMeter(segBass,   bassDisp   * 1.15);
+  setMeter(segTreble, trebleDisp * 1.15);
+  // sync neon color with mandala hue
+  document.documentElement.style.setProperty('--neon', `${colR}, ${colG}, ${colB}`);
+
+  requestAnimationFrame(tick);
+}
+
+requestAnimationFrame(tick);
+
+// ── idle cursor hide ───────────────────────────────────────────────────
+let idleTimer;
+function bumpIdle() {
+  document.body.classList.remove('idle');
+  clearTimeout(idleTimer);
+  idleTimer = setTimeout(() => document.body.classList.add('idle'), 2500);
+}
+addEventListener('pointermove', bumpIdle);
+addEventListener('keydown', bumpIdle);
+bumpIdle();
+</script>
+</body>
+</html>

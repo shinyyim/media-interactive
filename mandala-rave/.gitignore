@@ -1,0 +1,30 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+
+# Windows
+Thumbs.db
+Desktop.ini
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
+
+# Node (in case anyone adds tooling later)
+node_modules/
+npm-debug.log*
+package-lock.json
+yarn.lock
+
+# Local previews / scratch
+preview*.png
+*.local.html

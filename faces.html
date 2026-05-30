@@ -1,0 +1,1008 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FACES :: live tracking</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --red:     #ff2828;
+    --red-dim: #ff5050;
+    --bg-deep: #160202;
+    --ink:     #ffffff;
+  }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    background: var(--bg-deep);
+    color: var(--ink);
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    overflow: hidden;
+    cursor: crosshair;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  #display {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    background: var(--bg-deep);
+  }
+
+  video#cam {
+    position: absolute;
+    top: -9999px;
+    left: -9999px;
+    width: 2px;
+    height: 2px;
+    opacity: 0;
+  }
+
+  .vignette {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 4;
+    background: radial-gradient(ellipse 115% 95% at 50% 50%, transparent 40%, rgba(0,0,0,0.75) 100%);
+  }
+
+  .grain {
+    position: fixed;
+    inset: -40%;
+    pointer-events: none;
+    z-index: 5;
+    opacity: 0.05;
+    background-image: radial-gradient(rgba(255,255,255,0.5) 0.5px, transparent 0.5px);
+    background-size: 3px 3px;
+    animation: drift 1.6s steps(5) infinite;
+    mix-blend-mode: screen;
+  }
+  @keyframes drift {
+    0%   { transform: translate(0,0); }
+    25%  { transform: translate(-2px, 1px); }
+    50%  { transform: translate(1px, -2px); }
+    75%  { transform: translate(-1px, -1px); }
+    100% { transform: translate(0,0); }
+  }
+
+  /* HUD — minimal monochrome */
+  .hud {
+    position: fixed;
+    z-index: 10;
+    color: rgba(255, 255, 255, 0.5);
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    line-height: 1.5;
+    pointer-events: none;
+  }
+  .hud--tl { top: 24px; left: 28px; }
+  .hud--tr { top: 24px; right: 28px; text-align: right; }
+  .hud--bl { bottom: 24px; left: 28px; }
+  .hud--br { bottom: 24px; right: 28px; text-align: right; }
+  .hud b { color: #fff; font-weight: 500; }
+
+  .rec {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+  }
+  .rec::before {
+    content: '';
+    width: 5px;
+    height: 5px;
+    background: #fff;
+    border-radius: 50%;
+    animation: blink 1.2s steps(2) infinite;
+  }
+  @keyframes blink { 50% { opacity: 0.15; } }
+
+  /* corner brackets — very subtle */
+  .corner {
+    position: fixed;
+    width: 14px;
+    height: 14px;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    z-index: 9;
+    pointer-events: none;
+  }
+  .corner--tl { top: 12px; left: 12px; border-right: 0; border-bottom: 0; }
+  .corner--tr { top: 12px; right: 12px; border-left: 0; border-bottom: 0; }
+  .corner--bl { bottom: 12px; left: 12px; border-right: 0; border-top: 0; }
+  .corner--br { bottom: 12px; right: 12px; border-left: 0; border-top: 0; }
+
+  /* Gate */
+  .gate {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    background: var(--bg-deep);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 22px;
+    overflow: hidden;
+  }
+  .gate::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse 60% 60% at 50% 50%, rgba(255,40,40,0.10) 0%, transparent 70%);
+    pointer-events: none;
+  }
+  .gate-title {
+    font-size: clamp(56px, 11vw, 110px);
+    letter-spacing: 0.42em;
+    font-weight: 700;
+    color: var(--red);
+    text-transform: uppercase;
+    text-shadow: 0 0 22px rgba(255, 40, 40, 0.35), 0 0 60px rgba(255, 40, 40, 0.15);
+    margin-left: 0.42em;
+  }
+  .gate-sub {
+    font-size: 12px;
+    letter-spacing: 0.5em;
+    color: var(--red-dim);
+    text-transform: uppercase;
+  }
+  .gate-sub::before { content: '— '; }
+  .gate-sub::after  { content: ' —'; }
+  .gate-btn {
+    margin-top: 22px;
+    padding: 15px 40px;
+    background: transparent;
+    border: 2px solid var(--red);
+    color: var(--red);
+    font-family: inherit;
+    font-size: 11px;
+    letter-spacing: 0.45em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: all 0.25s ease;
+  }
+  .gate-btn:hover {
+    background: var(--red);
+    color: var(--ink);
+    letter-spacing: 0.6em;
+    padding-left: 56px;
+    padding-right: 56px;
+    box-shadow: 0 0 35px rgba(255, 40, 40, 0.4);
+  }
+  .gate-note {
+    margin-top: 14px;
+    font-size: 10px;
+    letter-spacing: 0.2em;
+    color: rgba(255, 80, 80, 0.45);
+    text-transform: uppercase;
+  }
+  .gate.hidden { display: none; }
+  .err { color: #ff8080 !important; }
+
+  /* Toggle button bar — minimal black & white */
+  .ctrl-bar {
+    position: fixed;
+    bottom: 22px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 11;
+    display: none;
+    gap: 0;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    background: rgba(0, 0, 0, 0.55);
+    backdrop-filter: blur(3px);
+    -webkit-backdrop-filter: blur(3px);
+  }
+  .ctrl-bar.visible { display: flex; }
+  .ctrl-btn {
+    padding: 6px 11px;
+    background: transparent;
+    border: 0;
+    border-right: 1px solid rgba(255, 255, 255, 0.15);
+    color: rgba(255, 255, 255, 0.65);
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 8px;
+    letter-spacing: 0.24em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .ctrl-btn:last-child { border-right: 0; }
+  .ctrl-btn:hover {
+    background: rgba(255, 255, 255, 0.06);
+    color: #fff;
+  }
+  .ctrl-btn.active {
+    background: #fff;
+    color: #000;
+  }
+  .ctrl-range {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 0 10px;
+    border-right: 1px solid rgba(255, 255, 255, 0.15);
+  }
+  .ctrl-range label {
+    font-size: 8px;
+    letter-spacing: 0.24em;
+    color: rgba(255, 255, 255, 0.65);
+    text-transform: uppercase;
+  }
+  .ctrl-range input[type="range"] {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 64px;
+    height: 1px;
+    background: rgba(255, 255, 255, 0.2);
+    outline: none;
+    margin: 0;
+  }
+  .ctrl-range input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 7px;
+    height: 7px;
+    background: #fff;
+    border-radius: 50%;
+    cursor: ew-resize;
+  }
+  .ctrl-range input[type="range"]::-moz-range-thumb {
+    width: 7px;
+    height: 7px;
+    background: #fff;
+    border: 0;
+    border-radius: 50%;
+    cursor: ew-resize;
+  }
+  .ctrl-range .v {
+    font-size: 8px;
+    color: #fff;
+    font-variant-numeric: tabular-nums;
+    min-width: 12px;
+  }
+</style>
+</head>
+<body>
+
+  <canvas id="display"></canvas>
+  <video id="cam" autoplay muted playsinline></video>
+
+  <!-- SVG color-matrix filters for RGB-split glitch (grayscale baked in) -->
+  <svg width="0" height="0" style="position:absolute; left:-9999px;" aria-hidden="true">
+    <defs>
+      <filter id="rOnly" color-interpolation-filters="sRGB">
+        <feColorMatrix type="matrix" values="0.299 0.587 0.114 0 0
+                                              0     0     0     0 0
+                                              0     0     0     0 0
+                                              0     0     0     1 0"/>
+      </filter>
+      <filter id="cOnly" color-interpolation-filters="sRGB">
+        <feColorMatrix type="matrix" values="0     0     0     0 0
+                                              0.299 0.587 0.114 0 0
+                                              0.299 0.587 0.114 0 0
+                                              0     0     0     1 0"/>
+      </filter>
+    </defs>
+  </svg>
+
+  <div class="vignette"></div>
+  <div class="grain"></div>
+
+  <div class="corner corner--tl"></div>
+  <div class="corner corner--tr"></div>
+  <div class="corner corner--bl"></div>
+  <div class="corner corner--br"></div>
+
+  <div class="hud hud--tl">faces — live</div>
+  <div class="hud hud--tr">
+    <div class="rec">rec</div>
+    <div><b id="count">0</b> subjects</div>
+  </div>
+  <div class="hud hud--bl"><b id="fps">0</b> fps</div>
+  <div class="hud hud--br" id="time">--:--:--</div>
+
+  <div class="ctrl-bar" id="ctrlBar">
+    <button class="ctrl-btn active" id="pixelBtn">pixel</button>
+    <div class="ctrl-range">
+      <label>size</label>
+      <input type="range" id="pixelSize" min="4" max="24" step="1" value="8">
+      <span class="v" id="pixelSizeVal">8</span>
+    </div>
+    <div class="ctrl-range">
+      <label>dim</label>
+      <input type="range" id="dimSlider" min="0" max="100" step="1" value="91">
+      <span class="v" id="dimVal">91</span>
+    </div>
+    <button class="ctrl-btn active" id="audioBtn">audio</button>
+    <button class="ctrl-btn active" id="glitchBtn">glitch</button>
+    <button class="ctrl-btn active" id="gridBtn">grid</button>
+    <button class="ctrl-btn active" id="mirrorBtn">mirror</button>
+  </div>
+
+  <div class="gate" id="gate">
+    <div class="gate-title">faces</div>
+    <div class="gate-sub">live tracking</div>
+    <button class="gate-btn" id="startBtn">begin scanning</button>
+    <div class="gate-note" id="gateNote">requires camera access</div>
+  </div>
+
+<script src="https://cdn.jsdelivr.net/gh/tehnokv/picojs/pico.js"></script>
+<script>
+(() => {
+  // ---------- DOM ----------
+  const video   = document.getElementById('cam');
+  const canvas  = document.getElementById('display');
+  const ctx     = canvas.getContext('2d');
+  const gateEl  = document.getElementById('gate');
+  const noteEl  = document.getElementById('gateNote');
+  const countEl = document.getElementById('count');
+  const fpsEl   = document.getElementById('fps');
+  const timeEl  = document.getElementById('time');
+
+  function resize() {
+    canvas.width  = window.innerWidth;
+    canvas.height = window.innerHeight;
+  }
+  resize();
+  window.addEventListener('resize', resize);
+
+  // ---------- STATE ----------
+  let running = false;
+  const state = { mirror: true, pixelize: true, pixelSize: 8, dim: 0.91, audio: true, glitch: true, grid: true };
+  const BOX_SCALE = 0.9; // face box visible/clip rect scale
+
+  // offscreen canvas used to pixelize the face crop during RGB-split glitch
+  let pixCanvas = null, pCtx = null;
+
+  // ---------- AUDIO ANALYSER ----------
+  const audio = {
+    ctx: null, analyser: null, freq: null,
+    bas: 0, mid: 0, tre: 0,
+    sBas: 0, sMid: 0, sTre: 0,
+    basEMA: 0, basVar: 0, beat: 0,
+  };
+
+  async function initAudio(stream) {
+    try {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      audio.ctx = new AC();
+      const src = audio.ctx.createMediaStreamSource(stream);
+      audio.analyser = audio.ctx.createAnalyser();
+      audio.analyser.fftSize = 1024;
+      audio.analyser.smoothingTimeConstant = 0.72;
+      src.connect(audio.analyser);
+      audio.freq = new Uint8Array(audio.analyser.frequencyBinCount);
+      console.log('[faces] audio ready');
+    } catch (e) { console.warn('[faces] audio init failed', e); }
+  }
+
+  function readAudio() {
+    if (!audio.analyser) return;
+    audio.analyser.getByteFrequencyData(audio.freq);
+    const N = audio.freq.length;
+    const basEnd = Math.floor(N * 0.06);
+    const midEnd = Math.floor(N * 0.30);
+    let bs = 0, ms = 0, ts = 0;
+    for (let i = 0; i < N; i++) {
+      const v = audio.freq[i];
+      if (i < basEnd) bs += v;
+      else if (i < midEnd) ms += v;
+      else ts += v;
+    }
+    const bas = bs / (basEnd * 255);
+    const mid = ms / ((midEnd - basEnd) * 255);
+    const tre = ts / ((N - midEnd) * 255);
+    audio.bas = bas; audio.mid = mid; audio.tre = tre;
+    const a = (cur, nv) => nv > cur ? cur + (nv - cur) * 0.55 : cur + (nv - cur) * 0.12;
+    audio.sBas = a(audio.sBas, bas);
+    audio.sMid = a(audio.sMid, mid);
+    audio.sTre = a(audio.sTre, tre);
+    // beat detection
+    const d = bas - audio.basEMA;
+    audio.basEMA += d * 0.05;
+    audio.basVar += (d * d - audio.basVar) * 0.05;
+    const sigma = Math.sqrt(audio.basVar);
+    if (bas > audio.basEMA + 1.0 * sigma && bas > 0.10) audio.beat = 1;
+    else audio.beat *= 0.92;
+  }
+
+  // Rei moon-portrait palette (lavender / crimson / moonlight blue / hot pink / violet)
+  // — assigned per detected face for box stroke + label fill, with neon glow.
+  const NEON_PALETTE = [
+    '#7a7aff',  // pale lavender (Rei hair)
+    '#e02838',  // crimson (Rei iris)
+    '#3a85f5',  // electric moonlight blue
+    '#ff5290',  // hot rose pink
+    '#9a5cff',  // saturated violet
+    '#3ad8d8',  // icy cyan
+  ];
+
+  // Single cohesive spark color picked from a small cinematic palette,
+  // selected by which audio band is currently dominant.
+  function sparkColor() {
+    if (!state.audio) return '#f0e4cf';   // muted cream when idle
+    const bas = audio.sBas, mid = audio.sMid, tre = audio.sTre;
+    const wBas = bas * 1.0, wMid = mid * 1.6, wTre = tre * 2.2;
+    const m = Math.max(wBas, wMid, wTre);
+    if (m === wTre) return '#5fc8e6';     // soft cyan
+    if (m === wMid) return '#ff5a8a';     // hot rose
+    return '#d6243f';                     // crimson
+  }
+
+  // ---------- AUDIO-TINTED DOT COLOR (Eva palette) ----------
+  // weighted target from bass/mid/treble; lerp warm cream → target by overall intensity.
+  // mid + treble get extra weight because raw bass values dominate most music.
+  function audioTintedColor() {
+    let r = 244, g = 241, b = 232; // warm cream baseline
+    if (state.audio) {
+      const wBas = audio.sBas * 1.0;
+      const wMid = audio.sMid * 1.9;
+      const wTre = audio.sTre * 2.6;
+      const total = wBas + wMid + wTre + 0.001;
+      // palette: bass = crimson, mid = magenta, treble = cyan
+      const trgR = (220 * wBas + 255 * wMid +  80 * wTre) / total;
+      const trgG = ( 30 * wBas +  80 * wMid + 230 * wTre) / total;
+      const trgB = ( 50 * wBas + 160 * wMid + 230 * wTre) / total;
+      const intensity = Math.min(1, total * 0.55);
+      r += (trgR - r) * intensity;
+      g += (trgG - g) * intensity;
+      b += (trgB - b) * intensity;
+    }
+    return `rgb(${r|0},${g|0},${b|0})`;
+  }
+
+  // ---------- NEON GRID (audio-reactive: bass pumps cell, beat highlights random lines) ----------
+  let gridScroll = 0;
+  function drawGrid(W, H, beat) {
+    const aBas = state.audio ? audio.sBas : 0;
+    const aMid = state.audio ? audio.sMid : 0;
+    const aTre = state.audio ? audio.sTre : 0;
+    const aRms = (aBas + aMid + aTre) / 3;
+
+    // bass pulls cell smaller (denser on heavy bass)
+    const baseCell = 64;
+    const cell = Math.max(28, baseCell * (1 - 0.25 * aBas - 0.10 * beat));
+    gridScroll = (gridScroll + 0.25 + 1.5 * aMid + 4 * beat) % cell;
+
+    const alpha = 0.08 + 0.22 * aRms + 0.22 * beat;
+
+    ctx.save();
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = `rgba(255, 255, 255, ${alpha})`;
+    ctx.shadowColor = 'rgba(255, 255, 255, 0.55)';
+    ctx.shadowBlur = 3 + 6 * aRms + 6 * beat;
+
+    // vertical lines (scroll left → right with audio)
+    for (let x = -gridScroll; x <= W + cell; x += cell) {
+      ctx.beginPath();
+      ctx.moveTo(x, 0); ctx.lineTo(x, H);
+      ctx.stroke();
+    }
+    // horizontal lines (scroll top → bottom)
+    for (let y = -gridScroll; y <= H + cell; y += cell) {
+      ctx.beginPath();
+      ctx.moveTo(0, y); ctx.lineTo(W, y);
+      ctx.stroke();
+    }
+
+    // beat highlight — pick a few random rows/cols, brighter + bigger glow
+    if (beat > 0.30) {
+      ctx.strokeStyle = `rgba(255, 255, 255, ${0.35 + 0.5 * beat})`;
+      ctx.shadowBlur = 8 + 14 * beat;
+      const n = 1 + Math.floor(beat * 4);
+      for (let i = 0; i < n; i++) {
+        if (Math.random() < 0.5) {
+          const xx = Math.round((Math.random() * W) / cell) * cell - gridScroll;
+          ctx.beginPath(); ctx.moveTo(xx, 0); ctx.lineTo(xx, H); ctx.stroke();
+        } else {
+          const yy = Math.round((Math.random() * H) / cell) * cell - gridScroll;
+          ctx.beginPath(); ctx.moveTo(0, yy); ctx.lineTo(W, yy); ctx.stroke();
+        }
+      }
+    }
+
+    ctx.shadowBlur = 0;
+    ctx.restore();
+  }
+
+  // ---------- PIXELIZED BG (stipple from video, audio-tinted) ----------
+  let sampler = null, sctx = null;
+  function drawPixelizedBg(W, H, sx, sy, sw, sh) {
+    if (!sampler) {
+      sampler = document.createElement('canvas');
+      sctx = sampler.getContext('2d', { willReadFrequently: true });
+    }
+    const beat = state.audio ? audio.beat : 0;
+    const aBas = state.audio ? audio.sBas : 0;
+    // chunkier cells on beats (cell pumps bigger with bass)
+    const cell = Math.max(3, Math.round(state.pixelSize * (1 + 0.55 * beat + 0.30 * aBas)));
+    const cols = Math.ceil(W / cell);
+    const rows = Math.ceil(H / cell);
+    sampler.width = cols;
+    sampler.height = rows;
+
+    sctx.save();
+    if (state.mirror) { sctx.translate(cols, 0); sctx.scale(-1, 1); }
+    sctx.drawImage(video, sx, sy, sw, sh, 0, 0, cols, rows);
+    sctx.restore();
+
+    const data = sctx.getImageData(0, 0, cols, rows).data;
+    const baseColor = audioTintedColor();
+    ctx.fillStyle = baseColor;
+
+    // single spark color per frame (cohesive — driven by current audio band)
+    const sCol = sparkColor();
+    const aTre = state.audio ? audio.sTre : 0;
+    const aMid = state.audio ? audio.sMid : 0;
+    // lower probability so sparks feel intentional, not chaotic
+    const sparkProb = state.glitch ? (0.002 + 0.03 * beat + 0.025 * aTre + 0.015 * aMid) : 0;
+
+    for (let r = 0; r < rows; r++) {
+      const yC = r * cell + cell * 0.5;
+      const rowBase = (r * cols) * 4;
+      for (let c = 0; c < cols; c++) {
+        const i = rowBase + c * 4;
+        let lum = (0.299 * data[i] + 0.587 * data[i+1] + 0.114 * data[i+2]) / 255;
+        lum = (lum - 0.5) * 1.25 + 0.5;
+        if (lum < 0.10) continue;
+        const radius = Math.max(0.5, Math.min(cell * 0.48, lum * cell * 0.46 * (1 + 0.35 * beat)));
+        const x = c * cell + cell * 0.5;
+
+        if (sparkProb > 0 && Math.random() < sparkProb && lum > 0.25) {
+          // single-color spark with subtle glow
+          ctx.fillStyle = sCol;
+          ctx.shadowColor = sCol;
+          ctx.shadowBlur = 3 + Math.random() * 4;
+          ctx.beginPath();
+          ctx.arc(x, yC, radius * (1.05 + Math.random() * 0.35), 0, Math.PI * 2);
+          ctx.fill();
+          ctx.shadowBlur = 0;
+          ctx.fillStyle = baseColor;
+        } else {
+          ctx.beginPath();
+          ctx.arc(x, yC, radius, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+    }
+  }
+
+  // ---------- LABEL POOL ----------
+  const ADJ = [
+    'PROTECTIVE','RESILIENT','KIND','REALISTIC','KEEN','ENTHUSIASTIC',
+    'FORCEFUL','GENEROUS','MINDFUL','GRACEFUL','BRAVE','CURIOUS','HONEST',
+    'NIMBLE','PATIENT','RADIANT','STEADY','THOUGHTFUL','VIBRANT','WISE',
+    'ZEALOUS','ARTFUL','BOLD','CALM','DEFT','EAGER','FERVENT','GENTLE',
+    'HUMBLE','JOLLY','LUMINOUS','SINCERE','STOIC','TENDER','UNTROUBLED'
+  ];
+  const NOUN = [
+    'IRONER','LEATHERWORKER','BEEKEEPER','CARTOGRAPHER','SAILMAKER',
+    'KITE FLYER','GLASSBLOWER','FERMENTER','WHISTLER','KNIFE SHARPENER',
+    'BOAT BUILDER','BREAD KNEADER','MOSS GROWER','ROPE BRAIDER',
+    'LANTERN MAKER','RUG WEAVER','NIGHT WATCHMAN','FRUIT PICKER',
+    'BOOK BINDER','MAP READER','FLAG SEWER','CANDLE DIPPER',
+    'SHELL POLISHER','KETTLE TENDER','STAR GAZER','FOSSIL HUNTER',
+    'WIND READER','RIVER WALKER','SALT GATHERER'
+  ];
+  const pick = (arr) => arr[(Math.random() * arr.length) | 0];
+  function randomLabel() {
+    const r = Math.random();
+    if (r < 0.45) return pick(ADJ);
+    if (r < 0.85) return pick(NOUN);
+    return 'EXTREME ' + pick(NOUN);
+  }
+
+  // ---------- TRACKING ----------
+  let nextId = 1;
+  const tracked = [];   // {id, cx, cy, size, label, lastSeen, _seen, born}
+  const STALE_MS = 350;    // drop track if not seen for this long
+
+  function updateTracking(dets) {
+    const now = performance.now();
+    for (const t of tracked) t._seen = false;
+
+    for (const d of dets) {
+      const [r, c, s] = d;
+      // dets are in display canvas coords already (we pass sX/sY before this call below)
+      const cx = c;
+      const cy = r;
+      const sz = s;
+
+      // find nearest existing track within proximity
+      let best = null, bestDist = Infinity;
+      for (const t of tracked) {
+        if (t._seen) continue;
+        const dx = cx - t.cx;
+        const dy = cy - t.cy;
+        const dist = Math.sqrt(dx*dx + dy*dy);
+        const thr = Math.max(t.size, sz) * 0.7;
+        if (dist < bestDist && dist < thr) {
+          bestDist = dist; best = t;
+        }
+      }
+
+      if (best) {
+        const k = 0.45;
+        best.cx   += (cx - best.cx) * k;
+        best.cy   += (cy - best.cy) * k;
+        best.size += (sz - best.size) * 0.30;
+        best.lastSeen = now;
+        best._seen = true;
+      } else {
+        tracked.push({
+          id: nextId++,
+          cx, cy, size: sz,
+          label: randomLabel(),
+          color: NEON_PALETTE[(Math.random() * NEON_PALETTE.length) | 0],
+          lastSeen: now,
+          born: now,
+          _seen: true,
+        });
+      }
+    }
+
+    // drop stale tracks
+    for (let i = tracked.length - 1; i >= 0; i--) {
+      if (now - tracked[i].lastSeen > STALE_MS) tracked.splice(i, 1);
+    }
+  }
+
+  // ---------- PICO FACE DETECTION ----------
+  let classify = null;
+  let updateMem = null;
+  let detectCanvas = null;
+  let detectCtx = null;
+
+  async function initDetector() {
+    if (typeof pico === 'undefined') {
+      console.warn('[faces] pico.js not loaded');
+      return;
+    }
+    try {
+      const r = await fetch('https://cdn.jsdelivr.net/gh/nenadmarkus/pico@c2e81f9d23cc11d1a612fd21e4f9de0921a5d0d9/rnt/cascades/facefinder');
+      const buf = await r.arrayBuffer();
+      const bytes = new Int8Array(buf);
+      classify = pico.unpack_cascade(bytes);
+      updateMem = pico.instantiate_detection_memory(3);
+
+      detectCanvas = document.createElement('canvas');
+      detectCtx = detectCanvas.getContext('2d', { willReadFrequently: true });
+
+      console.log('[faces] detector ready');
+      detectLoop();
+    } catch (e) {
+      console.warn('[faces] detector init failed', e);
+    }
+  }
+
+  let lastDetect = 0;
+  const DETECT_INTERVAL = 60;   // ~16fps detection
+
+  function detectLoop() {
+    if (!classify) return;
+    const now = performance.now();
+    if (running && video.videoWidth && now - lastDetect > DETECT_INTERVAL) {
+      try {
+        const W = canvas.width, H = canvas.height;
+        const vw = video.videoWidth, vh = video.videoHeight;
+        const vAspect = vw / vh;
+        const cAspect = W / H;
+        let sx, sy, sw, sh;
+        if (vAspect > cAspect) {
+          sh = vh; sw = vh * cAspect;
+          sx = (vw - sw) / 2; sy = 0;
+        } else {
+          sw = vw; sh = vw / cAspect;
+          sx = 0; sy = (vh - sh) / 2;
+        }
+
+        // downsample to ~440 wide for detection (matches display aspect)
+        const dw = 440;
+        const dh = Math.max(100, Math.round(dw * H / W));
+        detectCanvas.width = dw;
+        detectCanvas.height = dh;
+
+        detectCtx.save();
+        if (state.mirror) {
+          detectCtx.translate(dw, 0);
+          detectCtx.scale(-1, 1);
+        }
+        detectCtx.drawImage(video, sx, sy, sw, sh, 0, 0, dw, dh);
+        detectCtx.restore();
+
+        const data = detectCtx.getImageData(0, 0, dw, dh).data;
+        const gray = new Uint8Array(dw * dh);
+        for (let i = 0, j = 0; i < data.length; i += 4, j++) {
+          gray[j] = (0.299 * data[i] + 0.587 * data[i+1] + 0.114 * data[i+2]) | 0;
+        }
+        const image = { pixels: gray, nrows: dh, ncols: dw, ldim: dw };
+        const params = {
+          shiftfactor: 0.08,
+          minsize: 50,
+          maxsize: Math.min(dw, dh),
+          scalefactor: 1.1,
+        };
+        let dets = pico.run_cascade(image, classify, params);
+        dets = updateMem(dets);
+        dets = pico.cluster_detections(dets, 0.2);
+        dets = dets.filter(d => d[3] > 50);
+
+        // scale detections to display canvas coords
+        const sX = W / dw;
+        const sY = H / dh;
+        const scaled = dets.map(d => [d[0] * sY, d[1] * sX, d[2] * sX, d[3]]);
+        updateTracking(scaled);
+      } catch (e) { /* per-frame */ }
+      lastDetect = now;
+    }
+    requestAnimationFrame(detectLoop);
+  }
+
+  // ---------- RENDER ----------
+  let frames = 0, lastFps = performance.now(), fps = 0;
+
+  function render() {
+    requestAnimationFrame(render);
+
+    const W = canvas.width, H = canvas.height;
+
+    // ---- 0. read audio (cheap if disabled) ----
+    if (state.audio) readAudio();
+    const beat = state.audio ? audio.beat : 0;
+
+    // ---- 1. Black background ----
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, W, H);
+
+    if (!running || !video.videoWidth) return;
+
+    // ---- 2. cover-fit video math ----
+    const vw = video.videoWidth, vh = video.videoHeight;
+    const vAspect = vw / vh;
+    const cAspect = W / H;
+    let sx, sy, sw, sh;
+    if (vAspect > cAspect) {
+      sh = vh; sw = vh * cAspect;
+      sx = (vw - sw) / 2; sy = 0;
+    } else {
+      sw = vw; sh = vw / cAspect;
+      sx = 0; sy = (vh - sh) / 2;
+    }
+
+    // ---- 2b. optional pixelized stipple background + adjustable black dim ----
+    if (state.pixelize) {
+      drawPixelizedBg(W, H, sx, sy, sw, sh);
+      if (state.dim > 0.01) {
+        ctx.fillStyle = `rgba(0, 0, 0, ${state.dim})`;
+        ctx.fillRect(0, 0, W, H);
+      }
+    }
+
+    // ---- 2c. optional neon grid (drawn before face clip so faces sit on top) ----
+    if (state.grid) drawGrid(W, H, beat);
+
+    // ---- 3. clip to face boxes, paint grayscale (or RGB-split + pixelize when glitch on) ----
+    if (tracked.length > 0) {
+      ctx.save();
+      ctx.beginPath();
+      for (const t of tracked) {
+        const w = t.size * BOX_SCALE;
+        const h = t.size * 1.18 * BOX_SCALE;
+        ctx.rect(t.cx - w / 2, t.cy - h / 2, w, h);
+      }
+      ctx.clip();
+
+      if (state.glitch) {
+        // RGB split only (no pixelize). Persistent 1.2px, beat punches to ~8px.
+        const aTre = state.audio ? audio.sTre : 0;
+        const offset = 1.2 + 5 * beat + 2 * aTre;
+
+        ctx.fillStyle = '#000';
+        ctx.fillRect(0, 0, W, H);
+
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.save();
+        if (state.mirror) { ctx.translate(W, 0); ctx.scale(-1, 1); }
+
+        ctx.filter = 'url(#rOnly)';
+        ctx.drawImage(video, sx, sy, sw, sh, offset, 0, W, H);
+
+        ctx.filter = 'url(#cOnly)';
+        ctx.drawImage(video, sx, sy, sw, sh, -offset, 0, W, H);
+
+        ctx.filter = 'none';
+        ctx.restore();
+        ctx.globalCompositeOperation = 'source-over';
+      } else {
+        // plain grayscale
+        ctx.save();
+        if (state.mirror) { ctx.translate(W, 0); ctx.scale(-1, 1); }
+        ctx.filter = 'grayscale(1) contrast(1.18) brightness(1.05)';
+        ctx.drawImage(video, sx, sy, sw, sh, 0, 0, W, H);
+        ctx.filter = 'none';
+        ctx.restore();
+      }
+
+      ctx.restore();   // remove clip
+    }
+
+    // ---- 4. per-face box outlines + labels (on top of clipped imagery) ----
+    const now = performance.now();
+    let visible = 0;
+    for (const t of tracked) {
+      const age = now - t.born;
+      const flash = age < 250 ? 1 - age / 250 : 0;
+
+      const w = t.size * BOX_SCALE;
+      const h = t.size * 1.18 * BOX_SCALE;
+      const x = t.cx - w / 2;
+      const y = t.cy - h / 2;
+
+      const col = t.color || '#ff2828';
+
+      // intro flash inside the box on new detections (track's own color)
+      if (flash > 0) {
+        const m = col.match(/[0-9a-f]{2}/gi) || [];
+        const rr = parseInt(m[0] || 'ff', 16);
+        const gg = parseInt(m[1] || '28', 16);
+        const bb = parseInt(m[2] || '28', 16);
+        ctx.fillStyle = `rgba(${rr}, ${gg}, ${bb}, ${0.35 * flash})`;
+        ctx.fillRect(x, y, w, h);
+      }
+
+      // neon-glow box stroke
+      ctx.save();
+      ctx.shadowColor = col;
+      ctx.shadowBlur = 10;
+      ctx.strokeStyle = col;
+      ctx.lineWidth = 2;
+      ctx.strokeRect(x, y, w, h);
+      ctx.restore();
+
+      // label tag above box (also glowing)
+      const fontPx = Math.max(8, Math.min(11, Math.round(w * 0.055)));
+      ctx.font = `700 ${fontPx}px "JetBrains Mono", ui-monospace, monospace`;
+      ctx.textBaseline = 'top';
+      const padH = 5, padV = 3;
+      const tw = ctx.measureText(t.label).width;
+      const tagH = fontPx + padV * 2;
+
+      ctx.save();
+      ctx.shadowColor = col;
+      ctx.shadowBlur = 8;
+      ctx.fillStyle = col;
+      ctx.fillRect(x - 1, y - tagH - 1, tw + padH * 2, tagH);
+      ctx.restore();
+
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText(t.label, x + padH - 1, y - tagH - 1 + padV);
+
+      visible++;
+    }
+
+    // ---- 5. POST: very subtle full-frame flash on big beats ----
+    if (state.glitch && beat > 0.6) {
+      ctx.fillStyle = `rgba(255, 255, 255, ${0.04 * beat})`;
+      ctx.fillRect(0, 0, W, H);
+    }
+
+    // ---- 6. FPS / count ----
+    frames++;
+    if (now - lastFps > 500) {
+      fps = Math.round(frames * 1000 / (now - lastFps));
+      frames = 0; lastFps = now;
+      fpsEl.textContent = fps;
+      countEl.textContent = visible;
+    }
+  }
+
+  // ---------- CLOCK ----------
+  const pad2 = n => String(n).padStart(2, '0');
+  setInterval(() => {
+    const d = new Date();
+    timeEl.textContent = `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
+  }, 1000);
+
+  // ---------- START ----------
+  async function start() {
+    noteEl.textContent = 'requesting camera...';
+    noteEl.classList.remove('err');
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' },
+        audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+      });
+      // split video / audio so only video is set on the element
+      const vTracks = stream.getVideoTracks();
+      const aTracks = stream.getAudioTracks();
+      video.srcObject = new MediaStream(vTracks);
+      await video.play();
+      if (aTracks.length) await initAudio(new MediaStream(aTracks));
+      running = true;
+      gateEl.classList.add('hidden');
+      document.getElementById('ctrlBar').classList.add('visible');
+      initDetector();
+    } catch (e) {
+      console.error(e);
+      noteEl.textContent = 'camera denied. allow access and reload.';
+      noteEl.classList.add('err');
+    }
+  }
+  document.getElementById('startBtn').addEventListener('click', start);
+
+  // toggle handlers
+  const pixelBtn  = document.getElementById('pixelBtn');
+  const audioBtn  = document.getElementById('audioBtn');
+  const glitchBtn = document.getElementById('glitchBtn');
+  const gridBtn   = document.getElementById('gridBtn');
+  const mirrorBtn = document.getElementById('mirrorBtn');
+  const pixelSize = document.getElementById('pixelSize');
+  const pixelSizeVal = document.getElementById('pixelSizeVal');
+  glitchBtn.classList.toggle('active', state.glitch);
+
+  pixelBtn.addEventListener('click', () => {
+    state.pixelize = !state.pixelize;
+    pixelBtn.classList.toggle('active', state.pixelize);
+  });
+  audioBtn.addEventListener('click', () => {
+    state.audio = !state.audio;
+    audioBtn.classList.toggle('active', state.audio);
+    if (state.audio && audio.ctx && audio.ctx.state === 'suspended') {
+      audio.ctx.resume();
+    }
+  });
+  glitchBtn.addEventListener('click', () => {
+    state.glitch = !state.glitch;
+    glitchBtn.classList.toggle('active', state.glitch);
+  });
+  gridBtn.addEventListener('click', () => {
+    state.grid = !state.grid;
+    gridBtn.classList.toggle('active', state.grid);
+  });
+  mirrorBtn.addEventListener('click', () => {
+    state.mirror = !state.mirror;
+    mirrorBtn.classList.toggle('active', state.mirror);
+  });
+  pixelSize.addEventListener('input', () => {
+    state.pixelSize = parseInt(pixelSize.value);
+    pixelSizeVal.textContent = state.pixelSize;
+  });
+  const dimSlider = document.getElementById('dimSlider');
+  const dimVal = document.getElementById('dimVal');
+  dimSlider.addEventListener('input', () => {
+    state.dim = parseInt(dimSlider.value) / 100;
+    dimVal.textContent = dimSlider.value;
+  });
+
+  // keys: p = pixelize, m = mirror, r = re-roll labels, c = clear tracks, [ ] = pixel size
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'p') pixelBtn.click();
+    if (e.key === 'a') audioBtn.click();
+    if (e.key === 'g') glitchBtn.click();
+    if (e.key === 'k') gridBtn.click();
+    if (e.key === 'm') mirrorBtn.click();
+    if (e.key === 'r') tracked.forEach(t => t.label = randomLabel());
+    if (e.key === 'c') tracked.length = 0;
+    if (e.key === '[' || e.key === ']') {
+      const dir = e.key === ']' ? 1 : -1;
+      pixelSize.value = Math.max(4, Math.min(24, parseInt(pixelSize.value) + dir));
+      pixelSize.dispatchEvent(new Event('input'));
+    }
+  });
+
+  render();
+})();
+</script>
+
+</body>
+</html>

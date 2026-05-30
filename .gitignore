@@ -1,0 +1,29 @@
+# heavy/local-only data
+zeo/
+obsidian/
+ref/
+ref_frames/
+
+# OS / editor
+.DS_Store
+*.swp
+.idea/
+.vscode/
+
+# Local dev / deploy
+node_modules/
+.vercel/
+.wrangler/
+
+# Misc local
+src/
+assets/
+
+# Other one-off htmls not part of stage
+/index.html
+orbit.html
+orbit.js
+phosphor.html
+ref_board.html
+stage-visual.html
+timeline.html

@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>STAGE :: media interactive</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    background: #000;
+    color: #fff;
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    overflow: hidden;
+  }
+
+  iframe.scene {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    border: 0;
+    display: none;
+    background: #000;
+  }
+  iframe.scene.active { display: block; }
+
+  /* boot screen — visible until first scene loaded */
+  .boot {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    background: #000;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    color: rgba(255,255,255,0.7);
+  }
+  .boot-title {
+    font-size: clamp(40px, 8vw, 80px);
+    letter-spacing: 0.4em;
+    font-weight: 700;
+    color: #fff;
+    margin-left: 0.4em;
+    text-transform: uppercase;
+  }
+  .boot-sub {
+    font-size: 11px;
+    letter-spacing: 0.45em;
+    color: rgba(255,255,255,0.4);
+    text-transform: uppercase;
+  }
+  .boot-keys {
+    margin-top: 24px;
+    display: flex;
+    gap: 18px;
+    font-size: 10px;
+    letter-spacing: 0.3em;
+    color: rgba(255,255,255,0.5);
+    text-transform: uppercase;
+  }
+  .boot-keys span b {
+    display: inline-block;
+    border: 1px solid rgba(255,255,255,0.5);
+    color: #fff;
+    padding: 2px 6px;
+    margin-right: 8px;
+    font-weight: 700;
+  }
+  .boot-go {
+    margin-top: 28px;
+    padding: 13px 36px;
+    background: transparent;
+    border: 2px solid #fff;
+    color: #fff;
+    font-family: inherit;
+    font-size: 11px;
+    letter-spacing: 0.4em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+  .boot-go:hover {
+    background: #fff;
+    color: #000;
+    letter-spacing: 0.55em;
+    padding-left: 50px;
+    padding-right: 50px;
+  }
+  .boot.hidden { display: none; }
+
+  /* scene switcher bar */
+  .switcher {
+    position: fixed;
+    bottom: 18px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 50;
+    display: flex;
+    gap: 0;
+    border: 1px solid rgba(255,255,255,0.18);
+    background: rgba(0,0,0,0.55);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 9px;
+    letter-spacing: 0.24em;
+    text-transform: uppercase;
+    visibility: hidden;
+  }
+  .switcher.ready { visibility: visible; }
+  .switcher-item {
+    padding: 7px 14px;
+    border: 0;
+    border-right: 1px solid rgba(255,255,255,0.12);
+    background: transparent;
+    color: rgba(255,255,255,0.55);
+    font: inherit;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .switcher-item:last-child { border-right: 0; }
+  .switcher-item:hover {
+    background: rgba(255,255,255,0.06);
+    color: #fff;
+  }
+  .switcher-item.active {
+    background: #fff;
+    color: #000;
+  }
+  .switcher-item b {
+    font-weight: 700;
+    opacity: 0.6;
+    font-size: 8px;
+  }
+  .switcher-item.active b { opacity: 1; color: #000; }
+</style>
+</head>
+<body>
+
+  <div class="boot" id="boot">
+    <div class="boot-title">stage</div>
+    <div class="boot-sub">— media interactive —</div>
+    <div class="boot-keys">
+      <span><b>1</b> faces</span>
+      <span><b>2</b> mandala</span>
+      <span><b>3</b> cosmosbeater</span>
+      <span><b>4</b> boundary</span>
+    </div>
+    <button class="boot-go" id="bootGo">enter</button>
+  </div>
+
+
+<script>
+(() => {
+  // each scene has a gate to dismiss + the actual trigger inside it
+  const SCENES = [
+    { name: 'faces',        src: 'faces.html',              trigger: '#startBtn',    gate: '#gate' },
+    { name: 'mandala',      src: 'mandala-rave/index.html', trigger: '#mic-overlay', gate: '#mic-overlay' },
+    { name: 'cosmosbeater', src: 'cosmosbeater.html',       trigger: '#start-btn',   gate: '#gate' },
+    { name: 'boundary',     src: 'boundary.html',           trigger: '#gate',        gate: '#gate' },
+  ];
+
+  const frames = new Array(SCENES.length).fill(null);
+  let activeIdx = -1;
+  const bootEl  = document.getElementById('boot');
+
+  function dismissGate(idx) {
+    const f = frames[idx];
+    if (!f) return;
+    try {
+      const doc  = f.contentDocument;
+      if (!doc) return;
+      const trig = doc.querySelector(SCENES[idx].trigger);
+      if (trig) {
+        // dispatch a real MouseEvent so any "click" handler that checks isTrusted forgives us
+        trig.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: f.contentWindow }));
+      }
+      const gate = doc.querySelector(SCENES[idx].gate);
+      if (gate) gate.style.display = 'none';
+    } catch (e) { console.warn('[stage] gate dismiss failed for', SCENES[idx].name, e); }
+  }
+
+  function createFrame(idx) {
+    const f = document.createElement('iframe');
+    f.className = 'scene';
+    // cache-bust so iframe always fetches latest scene file (dev convenience)
+    const bust = '?v=' + Date.now();
+    f.src = SCENES[idx].src + bust;
+    f.setAttribute('allow', 'camera; microphone; autoplay; display-capture; fullscreen');
+    f.setAttribute('allowfullscreen', '');
+    f.addEventListener('load', () => {
+      try {
+        f.contentWindow.addEventListener('keydown', handleKey);
+      } catch (e) { /* cross-origin – ignore */ }
+      // small delay so the scene's own load script has time to bind handlers
+      setTimeout(() => dismissGate(idx), 120);
+    });
+    document.body.appendChild(f);
+    return f;
+  }
+
+  function eagerLoadAll() {
+    SCENES.forEach((_, i) => { if (!frames[i]) frames[i] = createFrame(i); });
+  }
+
+  function showScene(idx) {
+    if (idx === activeIdx || idx < 0 || idx >= SCENES.length) return;
+    if (!frames[idx]) frames[idx] = createFrame(idx);
+    frames.forEach((f, i) => f && f.classList.toggle('active', i === idx));
+    activeIdx = idx;
+    document.title = `STAGE :: ${SCENES[idx].name}`;
+    // re-attempt dismiss in case it hadn't loaded earlier
+    dismissGate(idx);
+  }
+
+  function toggleFullscreen() {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(() => {});
+    } else {
+      document.exitFullscreen().catch(() => {});
+    }
+  }
+
+  function handleKey(e) {
+    if (e.key === '1') showScene(0);
+    else if (e.key === '2') showScene(1);
+    else if (e.key === '3') showScene(2);
+    else if (e.key === '4') showScene(3);
+    else if (e.key === 'f' || e.key === 'F') toggleFullscreen();
+    // Esc is handled natively by the browser to exit fullscreen
+  }
+  window.addEventListener('keydown', handleKey);
+
+  // ENTER → preload everything, hide boot, dismiss gates, show #1
+  document.getElementById('bootGo').addEventListener('click', () => {
+    bootEl.classList.add('hidden');
+    eagerLoadAll();
+    showScene(0);
+  });
+})();
+</script>
+
+</body>
+</html>

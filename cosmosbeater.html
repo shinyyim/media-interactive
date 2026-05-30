@@ -1,0 +1,1582 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>CosmosBeater (Web)</title>
+  <style>
+    html, body {
+      margin: 0; padding: 0; height: 100%;
+      background: #000; overflow: hidden;
+      color: rgba(255, 255, 255, 0.65);
+      font: 8px/1.45 "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+      letter-spacing: 0.24em;
+      text-transform: uppercase;
+    }
+    #glcanvas { display: block; width: 100vw; height: 100vh; }
+
+    /* Corner brackets */
+    .corner {
+      position: fixed; width: 14px; height: 14px;
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      z-index: 9; pointer-events: none;
+    }
+    .corner--tl { top: 12px; left: 12px; border-right: 0; border-bottom: 0; }
+    .corner--tr { top: 12px; right: 12px; border-left: 0; border-bottom: 0; }
+    .corner--bl { bottom: 12px; left: 12px; border-right: 0; border-top: 0; }
+    .corner--br { bottom: 12px; right: 12px; border-left: 0; border-top: 0; }
+
+    /* Top-corner micro HUD */
+    .hud-mini {
+      position: fixed; z-index: 10;
+      color: rgba(255, 255, 255, 0.5);
+      font-size: 10px;
+      pointer-events: none;
+    }
+    .hud-mini--tl { top: 24px; left: 28px; }
+    .hud-mini--tr { top: 24px; right: 28px; text-align: right; }
+    .hud-mini b { color: #fff; font-weight: 500; }
+
+    /* Bottom centered control bar */
+    .ctrl-bar {
+      position: fixed; bottom: 22px; left: 50%;
+      transform: translateX(-50%);
+      z-index: 11;
+      display: flex;
+      gap: 0;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      background: rgba(0, 0, 0, 0.30);
+      backdrop-filter: blur(3px);
+      -webkit-backdrop-filter: blur(3px);
+      opacity: 0.65;
+      transition: opacity 0.25s ease;
+    }
+    .ctrl-bar:hover { opacity: 1; }
+    .ctrl-btn {
+      padding: 7px 11px;
+      background: transparent;
+      border: 0;
+      border-right: 1px solid rgba(255, 255, 255, 0.15);
+      color: rgba(255, 255, 255, 0.65);
+      font: inherit;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .ctrl-btn:last-child { border-right: 0; }
+    .ctrl-btn:hover { background: rgba(255, 255, 255, 0.06); color: #fff; }
+    .ctrl-btn.active { background: #fff; color: #000; }
+    .ctrl-btn .k {
+      display: inline-block;
+      min-width: 9px;
+      margin-right: 5px;
+      color: rgba(255, 255, 255, 0.35);
+      letter-spacing: 0;
+    }
+    .ctrl-btn.active .k { color: rgba(0, 0, 0, 0.45); }
+
+    /* Status line inside hud-mini--tr */
+    #status { font-size: 9px; letter-spacing: 0.2em; }
+
+    /* Gate (start screen) */
+    .gate {
+      position: fixed; inset: 0; z-index: 100;
+      background: #000;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 18px;
+    }
+    .gate-title {
+      font-size: clamp(48px, 9vw, 96px);
+      letter-spacing: 0.42em; font-weight: 700;
+      color: #fff; margin-left: 0.42em;
+    }
+    .gate-sub {
+      font-size: 11px; letter-spacing: 0.5em;
+      color: rgba(255, 255, 255, 0.45);
+    }
+    .gate-sub::before { content: '— '; }
+    .gate-sub::after  { content: ' —'; }
+    .gate-btn {
+      margin-top: 18px; padding: 14px 38px;
+      background: transparent;
+      border: 1px solid rgba(255, 255, 255, 0.6);
+      color: #fff;
+      font: inherit; font-size: 11px;
+      letter-spacing: 0.45em;
+      cursor: pointer;
+      transition: all 0.25s ease;
+    }
+    .gate-btn:hover {
+      background: #fff; color: #000;
+      letter-spacing: 0.6em;
+      padding-left: 52px; padding-right: 52px;
+    }
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+  <canvas id="glcanvas"></canvas>
+
+  <div class="corner corner--tl"></div>
+  <div class="corner corner--tr"></div>
+  <div class="corner corner--bl"></div>
+  <div class="corner corner--br"></div>
+
+  <div class="hud-mini hud-mini--tl">cosmosbeater — <b>live</b></div>
+  <div class="hud-mini hud-mini--tr"><span id="status"></span></div>
+
+  <div class="ctrl-bar" id="ctrl-bar">
+    <button class="ctrl-btn" data-act="mic"><span class="k">G</span>mic</button>
+    <button class="ctrl-btn" data-act="chaos"><span class="k">X</span>chaos</button>
+    <button class="ctrl-btn" data-act="backdrop"><span class="k">Y</span>back</button>
+    <button class="ctrl-btn" data-act="pointcloud"><span class="k">I</span>cloud</button>
+    <button class="ctrl-btn" data-act="texsphere"><span class="k">T</span>texsphere</button>
+    <button class="ctrl-btn" data-act="prev"><span class="k">J</span>prev</button>
+    <button class="ctrl-btn" data-act="next"><span class="k">K</span>next</button>
+    <button class="ctrl-btn" data-act="pause"><span class="k">␣</span>pause</button>
+    <button class="ctrl-btn" data-act="fullscreen"><span class="k">F</span>full</button>
+  </div>
+
+  <div class="gate" id="gate">
+    <div class="gate-title">COSMOSBEATER</div>
+    <div class="gate-sub">audio-reactive visualizer</div>
+    <button class="gate-btn" id="start-btn">enter</button>
+  </div>
+
+<script>
+"use strict";
+
+// ───────────────────────────────────────────────────────────────
+// CONFIG
+// ───────────────────────────────────────────────────────────────
+const CFG = {
+  imageManifestUrl: "./zeo/gemini-generation/Generations/_all_images/manifest.json",
+  imageBaseUrl: "./zeo/gemini-generation/Generations/_all_images/",
+  initialLoadCount: 24,           // load first N immediately; rest lazy in background
+  spherePoints: 60000,
+  starfieldPoints: 9000,
+  ringPoints: 5000,
+  ringCount: 2,
+  ripplePoints: 4000,
+  imagePointcloudMaxPoints: 50000,
+  rotationSpeed: 0.18,
+  flareStrength: 1.0,
+  grainAmount: 0.06,
+  glitchBase: 0.15,
+  glitchKick: 1.0,
+  audioSensitivity: 2.0,
+  modesOnStart: { backdrop: true, chaos: true, texsphere: false, pointcloud: false },
+  chaosAutoSwapSeconds: 0.7,
+  chaosOnsetThreshold: 0.10,
+  chaosMinSwap: 0.15,
+  chaosFilterChance: 0.55,
+  chaosGlitchChance: 0.40,
+};
+
+// ───────────────────────────────────────────────────────────────
+// SHADERS (GLSL 300 ES — same logic as Python POINT/LINE/POST/CHAOS)
+// ───────────────────────────────────────────────────────────────
+const POINT_VS = `#version 300 es
+precision highp float;
+in vec3 in_pos;
+in vec3 in_color;
+in float in_seed;
+uniform mat4 uMVP;
+uniform float uPointSize;
+uniform float uTime;
+uniform float uTwinkle;
+uniform float uBrightness;
+uniform vec3  uViewPos;
+out vec3 v_color;
+out float v_alpha;
+void main() {
+  gl_Position = uMVP * vec4(in_pos, 1.0);
+  float dist = length(in_pos - uViewPos);
+  float ps = uPointSize / max(0.3, dist);
+  float fl = 0.55 + 0.45 * sin(uTime * 3.0 + in_seed * 31.7);
+  float tw = mix(1.0, fl, uTwinkle);
+  gl_PointSize = max(1.0, ps * (0.7 + tw * 0.6));
+  v_color = in_color;
+  v_alpha = uBrightness * tw;
+}`;
+
+const POINT_FS = `#version 300 es
+precision highp float;
+in vec3 v_color;
+in float v_alpha;
+out vec4 outColor;
+uniform float uGlowBoost;
+void main() {
+  vec2 q = gl_PointCoord - 0.5;
+  float d = length(q) * 2.0;
+  if (d > 1.0) discard;
+  float power = mix(1.8, 0.85, clamp(uGlowBoost, 0.0, 1.0));
+  float a = pow(1.0 - d, power) * v_alpha;
+  vec3 c = v_color * (1.0 + uGlowBoost * 1.15);
+  outColor = vec4(c * a, a);
+}`;
+
+const LINE_VS = `#version 300 es
+precision highp float;
+in vec3 in_pos;
+uniform mat4 uMVP;
+uniform vec3 uColor;
+uniform float uAlpha;
+out vec3 v_color;
+out float v_alpha;
+void main() {
+  gl_Position = uMVP * vec4(in_pos, 1.0);
+  v_color = uColor;
+  v_alpha = uAlpha;
+}`;
+
+const LINE_FS = `#version 300 es
+precision highp float;
+in vec3 v_color;
+in float v_alpha;
+out vec4 outColor;
+void main() { outColor = vec4(v_color * v_alpha, v_alpha); }`;
+
+const FULLSCREEN_VS = `#version 300 es
+precision highp float;
+in vec2 in_pos;
+out vec2 v_uv;
+void main() {
+  v_uv = in_pos * 0.5 + 0.5;
+  gl_Position = vec4(in_pos, 0.0, 1.0);
+}`;
+
+const POST_FS = `#version 300 es
+precision highp float;
+in vec2 v_uv;
+out vec4 outColor;
+uniform sampler2D uScene;
+uniform vec2 uResolution;
+uniform float uTime;
+uniform float uFlareStrength;
+uniform float uGrain;
+uniform float uChroma;
+uniform float uVignette;
+uniform float uBassKick;
+uniform float uGlitchBase;
+uniform float uGlitchKick;
+uniform float uTreble;
+float hash(vec2 p) { p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
+float hash11(float x) { return fract(sin(x * 12.9898) * 43758.5453); }
+vec3 brightPass(vec2 uv) { return max(texture(uScene, uv).rgb - 0.55, 0.0); }
+vec3 streak(vec2 uv, vec2 dir, float length_, int samples) {
+  vec3 acc = vec3(0.0); float total = 0.0;
+  for (int i = 0; i < samples; i++) {
+    float t = float(i) / float(samples - 1);
+    float w = exp(-pow(t - 0.5, 2.0) * 14.0);
+    vec2 o = dir * (t - 0.5) * length_;
+    acc += brightPass(uv + o) * w;
+    total += w;
+  }
+  return acc / total;
+}
+vec2 sliceDisplace(vec2 uv, float strength) {
+  if (strength <= 0.001) return uv;
+  float n_slices = mix(40.0, 120.0, uTreble);
+  float row = floor(uv.y * n_slices);
+  float ts = floor(uTime * mix(6.0, 20.0, uTreble));
+  float r = hash11(row * 7.13 + ts * 3.7);
+  float gate = step(0.75, r);
+  float dir = hash11(row + ts * 0.31) > 0.5 ? 1.0 : -1.0;
+  float amt = (r - 0.75) * 4.0;
+  return vec2(uv.x + dir * amt * 0.18 * strength * gate, uv.y);
+}
+vec2 trackingWave(vec2 uv, float strength) {
+  float wave = sin(uv.y * 280.0 + uTime * 9.0) * 0.0014 + sin(uv.y * 53.0 + uTime * 1.4) * 0.0045;
+  return vec2(uv.x + wave * (0.5 + 5.0 * strength), uv.y);
+}
+vec3 bitcrush(vec3 c, float strength) {
+  if (strength <= 0.001) return c;
+  float levels = mix(64.0, 5.0, clamp(strength, 0.0, 1.0));
+  return floor(c * levels) / levels;
+}
+void main() {
+  vec2 uv = v_uv;
+  vec2 c = uv - 0.5;
+  float r2 = dot(c, c);
+  float gstrength = clamp(uGlitchBase + uGlitchKick * uBassKick * 1.4, 0.0, 1.5);
+  vec2 guv = trackingWave(sliceDisplace(uv, gstrength), gstrength);
+  vec2 ca = c * r2 * (uChroma + gstrength * 0.20);
+  vec3 col;
+  col.r = texture(uScene, guv + ca).r;
+  col.g = texture(uScene, guv).g;
+  col.b = texture(uScene, guv - ca).b;
+  if (gstrength > 0.05) {
+    float n_slices = mix(40.0, 120.0, uTreble);
+    float row = floor(uv.y * n_slices);
+    float ts = floor(uTime * mix(6.0, 20.0, uTreble));
+    float r = hash11(row * 7.13 + ts * 3.7);
+    if (r > 0.85) {
+      float dx = (r - 0.85) * 0.06 * gstrength;
+      col.r = mix(col.r, texture(uScene, guv + vec2(dx, 0.0)).r, 0.7);
+      col.b = mix(col.b, texture(uScene, guv - vec2(dx, 0.0)).b, 0.7);
+    }
+  }
+  float fs = uFlareStrength * (1.0 + uBassKick * 2.0);
+  if (fs > 0.01) {
+    float L = 0.42 + uBassKick * 0.10;
+    vec3 fH  = streak(uv, vec2(1.0, 0.0), L, 24);
+    vec3 fV  = streak(uv, vec2(0.0, 1.0), L * 0.85, 24);
+    vec3 fD1 = streak(uv, normalize(vec2( 1.0,  1.0)), L * 0.55, 18);
+    vec3 fD2 = streak(uv, normalize(vec2(-1.0,  1.0)), L * 0.55, 18);
+    vec3 flare = (fH * 1.2 + fV * 0.9 + fD1 * 0.55 + fD2 * 0.55) * fs;
+    flare *= vec3(1.05, 1.02, 1.10);
+    col += flare;
+  }
+  col = mix(col, bitcrush(col, gstrength), min(1.0, gstrength * 1.2));
+  if (uVignette > 0.0) {
+    float v = smoothstep(0.95, 0.25, length(c) * 1.1);
+    col *= mix(1.0, v, uVignette);
+  }
+  if (uGrain > 0.0) {
+    float n = hash(uv * uResolution + uTime * 60.0) - 0.5;
+    col += n * uGrain;
+  }
+  outColor = vec4(col, 1.0);
+}`;
+
+const BACKDROP_FS = `#version 300 es
+precision highp float;
+in vec2 v_uv;
+out vec4 outColor;
+uniform sampler2D uImage;
+uniform float uAlpha;
+uniform float uContrast;
+uniform vec2  uImageAspect;
+void main() {
+  float ia = uImageAspect.x, sa = uImageAspect.y;
+  vec2 uv = v_uv;
+  if (ia > sa) { float k = sa/ia; uv.x = (uv.x - 0.5)*k + 0.5; }
+  else        { float k = ia/sa; uv.y = (uv.y - 0.5)*k + 0.5; }
+  vec3 c = texture(uImage, vec2(uv.x, 1.0 - uv.y)).rgb;
+  c = (c - 0.5) * uContrast + 0.5;
+  outColor = vec4(c * uAlpha, 1.0);
+}`;
+
+const CHAOS_FS = `#version 300 es
+precision highp float;
+in vec2 v_uv;
+out vec4 outColor;
+uniform sampler2D uImage;
+uniform float uAlpha;
+uniform float uFlash;
+uniform float uFilterMode;
+uniform float uFilterAmount;
+uniform float uGlitchBars;
+uniform float uTime;
+uniform float uRotation;
+uniform float uZoom;
+uniform float uSwirl;
+uniform vec2  uScreenAspect;
+uniform float uMirror;
+uniform float uPixelize;
+uniform float uColorCrush;
+uniform float uDotScreen;
+uniform vec3  uMonoTint;
+uniform float uMonoTintAmount;
+uniform float uOverlay;
+uniform float uOverlayPhase;
+float hash11(float x) { return fract(sin(x * 12.9898) * 43758.5453); }
+vec3 rgb2hsv(vec3 c) {
+  vec4 K = vec4(0.0, -1.0/3.0, 2.0/3.0, -1.0);
+  vec4 p = mix(vec4(c.bg, K.wz), vec4(c.gb, K.xy), step(c.b, c.g));
+  vec4 q = mix(vec4(p.xyw, c.r), vec4(c.r, p.yzx), step(p.x, c.r));
+  float d = q.x - min(q.w, q.y);
+  float e = 1.0e-10;
+  return vec3(abs(q.z + (q.w - q.y) / (6.0 * d + e)), d / (q.x + e), q.x);
+}
+vec3 hsv2rgb(vec3 c) {
+  vec4 K = vec4(1.0, 2.0/3.0, 1.0/3.0, 3.0);
+  vec3 p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);
+  return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
+}
+vec3 applyFilter(vec3 col, float mode, float amount) {
+  if (mode < 0.5) return col;
+  if (mode < 1.5) return mix(col, vec3(1.0) - col, amount);
+  if (mode < 2.5) { vec3 hsv = rgb2hsv(col); hsv.x = fract(hsv.x + amount * 0.55); return hsv2rgb(hsv); }
+  if (mode < 3.5) { vec3 hsv = rgb2hsv(col); hsv.y = clamp(hsv.y * (1.0 + amount * 1.4), 0.0, 1.0); return hsv2rgb(hsv); }
+  float l = dot(col, vec3(0.299, 0.587, 0.114));
+  return mix(col, vec3(l), amount);
+}
+void main() {
+  vec2 uv = v_uv;
+  vec2 c = uv - 0.5;
+  float asp = max(uScreenAspect.x, 1.0) / max(uScreenAspect.y, 1.0);
+  c.x *= asp;
+  float r = length(c);
+  float ang = uRotation + uSwirl * r * 4.0;
+  float cs = cos(ang), sn = sin(ang);
+  c = mat2(cs, -sn, sn, cs) * c;
+  c /= max(0.05, uZoom);
+  c.x /= asp;
+  uv = c + 0.5;
+  if (uGlitchBars > 0.01) {
+    float n = 36.0;
+    float row = floor(uv.y * n);
+    float ts = floor(uTime * 14.0);
+    float rr = hash11(row * 11.3 + ts * 5.1);
+    if (rr > 0.62) uv.x += (rr - 0.62) * 0.5 * uGlitchBars * (hash11(row + ts) > 0.5 ? 1.0 : -1.0);
+  }
+  uv = fract(uv);
+  if (uMirror > 0.5) {
+    if (uMirror < 1.5) uv.x = 0.5 + abs(uv.x - 0.5);
+    else if (uMirror < 2.5) uv.y = 0.5 + abs(uv.y - 0.5);
+    else if (uMirror < 3.5) { uv.x = 0.5 + abs(uv.x - 0.5); uv.y = 0.5 + abs(uv.y - 0.5); }
+    else {
+      vec2 cc = uv - 0.5;
+      float ang2 = atan(cc.y, cc.x);
+      float rr2 = length(cc);
+      float seg = 6.28318 / 6.0;
+      ang2 = mod(ang2, seg);
+      ang2 = abs(ang2 - seg * 0.5);
+      uv = vec2(cos(ang2), sin(ang2)) * rr2 + 0.5;
+    }
+    uv = clamp(uv, vec2(0.001), vec2(0.999));
+  }
+  if (uPixelize > 0.001) {
+    float blocks = mix(180.0, 22.0, clamp(uPixelize, 0.0, 1.0));
+    vec2 res = vec2(blocks * asp, blocks);
+    uv = (floor(uv * res) + 0.5) / res;
+  }
+  vec3 col = texture(uImage, vec2(uv.x, 1.0 - uv.y)).rgb;
+  col = applyFilter(col, uFilterMode, uFilterAmount);
+  if (uColorCrush > 0.001) {
+    float levels = mix(32.0, 3.0, clamp(uColorCrush, 0.0, 1.0));
+    col = floor(col * levels) / max(1.0, levels - 1.0);
+  }
+  if (uDotScreen > 0.001) {
+    float density = mix(360.0, 110.0, clamp(uDotScreen, 0.0, 1.0));
+    vec2 g = v_uv * vec2(density * asp, density);
+    vec2 cell_uv = fract(g) - 0.5;
+    float lum = dot(col, vec3(0.299, 0.587, 0.114));
+    float rd = 0.55 * pow(clamp(lum, 0.0, 1.0), 0.55);
+    float d = length(cell_uv);
+    col = vec3(smoothstep(rd + 0.06, rd - 0.06, d));
+  }
+  if (uMonoTintAmount > 0.001) {
+    float lum = dot(col, vec3(0.299, 0.587, 0.114));
+    vec3 tinted = uMonoTint * pow(clamp(lum, 0.0, 1.0), 0.80) * 1.20;
+    col = mix(col, tinted, clamp(uMonoTintAmount, 0.0, 1.0));
+  }
+  col = mix(col, vec3(1.0), uFlash * 0.85);
+  if (uOverlay > 0.01) {
+    vec2 cp = v_uv - 0.5;
+    cp.x *= asp;
+    float cs2 = cos(uOverlayPhase), sn2 = sin(uOverlayPhase);
+    vec2 rp = mat2(cs2, -sn2, sn2, cs2) * cp;
+    float ov = 0.0;
+    float th = 0.0014;
+    if (abs(rp.x) < th && abs(rp.y) > 0.025 && abs(rp.y) < 0.40) ov = 1.0;
+    if (abs(rp.y) < th && abs(rp.x) > 0.025 && abs(rp.x) < 0.40) ov = max(ov, 1.0);
+    float rad_out = 0.32;
+    float ring_th = 0.0022;
+    float dout = abs(length(cp) - rad_out);
+    ov = max(ov, 1.0 - smoothstep(ring_th, ring_th + 0.0035, dout));
+    float rad_in = 0.115;
+    float din = abs(length(cp) - rad_in);
+    float ring_in = 1.0 - smoothstep(ring_th, ring_th + 0.0035, din);
+    float angO = atan(cp.y, cp.x) - uOverlayPhase * 0.6;
+    float dash = step(0.55, fract(angO * 16.0 / 6.28318));
+    ov = max(ov, ring_in * dash);
+    float bsize = 0.06, bth = 0.0020;
+    vec2 ce = vec2(0.5 * asp - 0.02, 0.48);
+    vec2 ap = vec2(abs(cp.x), abs(cp.y));
+    vec2 da = ce - ap;
+    if (da.x > 0.0 && da.x < bsize && da.y < bth) ov = max(ov, 1.0);
+    if (da.y > 0.0 && da.y < bsize && da.x < bth) ov = max(ov, 1.0);
+    float scan_y = fract(uOverlayPhase * 0.07) - 0.5;
+    if (abs(cp.y - scan_y) < 0.0008) ov = max(ov, 0.55);
+    col = mix(col, vec3(0.98, 0.99, 1.0), ov * uOverlay);
+  }
+  outColor = vec4(col * uAlpha, 1.0);
+}`;
+
+// ───────────────────────────────────────────────────────────────
+// MATH HELPERS  (column-major mat4 stored as Float32Array(16))
+// ───────────────────────────────────────────────────────────────
+function mat4Identity() { const m=new Float32Array(16); m[0]=m[5]=m[10]=m[15]=1; return m; }
+function mat4Mul(a, b) {
+  const out = new Float32Array(16);
+  for (let r=0; r<4; r++) for (let c=0; c<4; c++) {
+    let s=0; for (let k=0; k<4; k++) s += a[r + k*4] * b[k + c*4];
+    out[r + c*4] = s;
+  }
+  return out;
+}
+function mat4Perspective(fovDeg, aspect, near, far) {
+  const f = 1 / Math.tan(fovDeg * Math.PI / 360);
+  const m = new Float32Array(16);
+  m[0] = f / aspect; m[5] = f;
+  m[10] = (far + near) / (near - far);
+  m[14] = (2 * far * near) / (near - far);
+  m[11] = -1;
+  return m;
+}
+function mat4LookAt(eye, target, up) {
+  const fx = target[0]-eye[0], fy = target[1]-eye[1], fz = target[2]-eye[2];
+  let fl = Math.hypot(fx, fy, fz); const fxn=fx/fl, fyn=fy/fl, fzn=fz/fl;
+  const sx = fyn*up[2] - fzn*up[1], sy = fzn*up[0] - fxn*up[2], sz = fxn*up[1] - fyn*up[0];
+  let sl = Math.hypot(sx, sy, sz); const sxn=sx/sl, syn=sy/sl, szn=sz/sl;
+  const ux = syn*fzn - szn*fyn, uy = szn*fxn - sxn*fzn, uz = sxn*fyn - syn*fxn;
+  const m = new Float32Array(16);
+  m[0]=sxn; m[4]=syn; m[8]=szn;  m[12] = -(sxn*eye[0]+syn*eye[1]+szn*eye[2]);
+  m[1]=ux;  m[5]=uy;  m[9]=uz;   m[13] = -(ux*eye[0]+uy*eye[1]+uz*eye[2]);
+  m[2]=-fxn;m[6]=-fyn;m[10]=-fzn;m[14] = (fxn*eye[0]+fyn*eye[1]+fzn*eye[2]);
+  m[15] = 1;
+  return m;
+}
+function mat4RotY(a) { const c=Math.cos(a), s=Math.sin(a); const m=mat4Identity(); m[0]=c; m[2]=-s; m[8]=s; m[10]=c; return m; }
+function mat4RotX(a) { const c=Math.cos(a), s=Math.sin(a); const m=mat4Identity(); m[5]=c; m[6]=s; m[9]=-s; m[10]=c; return m; }
+function mat4Scale(sx, sy, sz) { sy = sy ?? sx; sz = sz ?? sx; const m=mat4Identity(); m[0]=sx; m[5]=sy; m[10]=sz; return m; }
+
+// ───────────────────────────────────────────────────────────────
+// GEOMETRY GENERATORS  (matches Python helpers)
+// ───────────────────────────────────────────────────────────────
+function fibonacciSphere(n, radius = 1.0) {
+  const out = new Float32Array(n * 3);
+  const phi = Math.PI * (3.0 - Math.sqrt(5.0));
+  for (let i = 0; i < n; i++) {
+    const y = 1.0 - (i / Math.max(1, n - 1)) * 2.0;
+    const r = Math.sqrt(1.0 - y*y);
+    const th = phi * i;
+    out[i*3  ] = Math.cos(th) * r * radius;
+    out[i*3+1] = y * radius;
+    out[i*3+2] = Math.sin(th) * r * radius;
+  }
+  return out;
+}
+function ringPoints(n, radius, thickness = 0.02, tiltDeg = 30, seed = 0) {
+  const rng = mulberry32(seed * 9176 + 17);
+  const a = tiltDeg * Math.PI / 180;
+  const ca = Math.cos(a), sa = Math.sin(a);
+  const out = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) {
+    const th = rng() * Math.PI * 2;
+    const rr = radius + (rng() * 2 - 1) * thickness;
+    const yy = (rng() * 2 - 1) * thickness * 0.3;
+    const x = Math.cos(th) * rr;
+    const z = Math.sin(th) * rr;
+    // rotate around X
+    const y2 = ca*yy - sa*z;
+    const z2 = sa*yy + ca*z;
+    out[i*3] = x; out[i*3+1] = y2; out[i*3+2] = z2;
+  }
+  return out;
+}
+function starfieldPoints(n, scale = 14.0) {
+  const rng = mulberry32(7);
+  const out = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) {
+    out[i*3  ] = (rng()*2-1) * scale;
+    out[i*3+1] = (rng()*2-1) * scale * 0.6;
+    out[i*3+2] = (rng()*2-1) * scale;
+  }
+  return out;
+}
+function ripplePoints(n, nRings = 14, radius = 1.6, y = -1.55) {
+  const perRing = Math.max(8, Math.floor(n / nRings));
+  const total = perRing * nRings;
+  const out = new Float32Array(total * 3);
+  let i = 0;
+  for (let k = 0; k < nRings; k++) {
+    const rr = radius * (k + 1) / nRings;
+    for (let j = 0; j < perRing; j++) {
+      const th = (j / perRing) * Math.PI * 2;
+      out[i*3] = Math.cos(th) * rr; out[i*3+1] = y; out[i*3+2] = Math.sin(th) * rr;
+      i++;
+    }
+  }
+  return out;
+}
+function pyramidLines(cx, cy, cz, size, ox = 1, oy = 1, oz = 1) {
+  const apex = [cx, cy + size*oy, cz];
+  const base = [
+    [cx - size*ox, cy, cz - size*oz],
+    [cx + size*ox, cy, cz - size*oz],
+    [cx + size*ox, cy, cz + size*oz],
+    [cx - size*ox, cy, cz + size*oz],
+  ];
+  const edges = [];
+  for (const b of base) edges.push(apex, b);
+  for (let i = 0; i < 4; i++) edges.push(base[i], base[(i+1) % 4]);
+  const out = new Float32Array(edges.length * 3);
+  for (let i = 0; i < edges.length; i++) {
+    out[i*3] = edges[i][0]; out[i*3+1] = edges[i][1]; out[i*3+2] = edges[i][2];
+  }
+  return out;
+}
+function mulberry32(seed) {
+  let a = seed >>> 0;
+  return function() {
+    a = (a + 0x6D2B79F5) | 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// ───────────────────────────────────────────────────────────────
+// IMAGE → POINTCLOUD  (XY billboard, Z = luminance extrusion)
+// ───────────────────────────────────────────────────────────────
+function imageToPointcloud(imgCanvas, maxPoints = 50000, zExtrude = 0.9) {
+  const ctx = imgCanvas.getContext("2d");
+  const w = imgCanvas.width, h = imgCanvas.height;
+  const total = w * h;
+  const stride = Math.max(1, Math.ceil(Math.sqrt(total / Math.max(1, maxPoints))));
+  const sw = Math.floor(w / stride), sh = Math.floor(h / stride);
+  const aspect = w / h;
+  const n = sw * sh;
+  const pos = new Float32Array(n * 3);
+  const col = new Float32Array(n * 3);
+  const seed = new Float32Array(n);
+  const rng = mulberry32(7);
+  const data = ctx.getImageData(0, 0, w, h).data;
+  let p = 0;
+  for (let yy = 0; yy < sh; yy++) {
+    for (let xx = 0; xx < sw; xx++) {
+      const px = xx * stride, py = yy * stride;
+      const idx = (py * w + px) * 4;
+      const R = data[idx]/255, G = data[idx+1]/255, B = data[idx+2]/255;
+      const nx = (xx / Math.max(1, sw - 1) - 0.5) * 2.0 * aspect;
+      const ny = -(yy / Math.max(1, sh - 1) - 0.5) * 2.0;
+      const lum = 0.299*R + 0.587*G + 0.114*B;
+      const nz = (lum - 0.5) * zExtrude;
+      pos[p*3] = nx; pos[p*3+1] = ny; pos[p*3+2] = nz;
+      col[p*3] = R; col[p*3+1] = G; col[p*3+2] = B;
+      seed[p] = rng() * Math.PI * 2;
+      p++;
+    }
+  }
+  return { pos, col, seed, n };
+}
+
+// ───────────────────────────────────────────────────────────────
+// AUDIO REACTOR  (Web Audio: getUserMedia + AnalyserNode)
+// ───────────────────────────────────────────────────────────────
+class AudioReactor {
+  constructor(sensitivity = 2.0) {
+    this.sensitivity = sensitivity;
+    this.audioCtx = null;
+    this.analyser = null;
+    this.stream = null;
+    this.running = false;
+    this.fftSize = 2048;
+    this.fft = null;
+    this.bandBass = 0; this.bandMids = 0; this.bandTreble = 0;
+    this._prevBass = 0; this._prevFast = 0; this._fast = 0;
+    this.beatPulse = 0;
+    this._peakBass = 0.01; this._peakMids = 0.01; this._peakTreble = 0.01; this._peakLevel = 0.01;
+    this.audioLevel = 0;
+    this._lastBeat = 0;
+  }
+  async start() {
+    if (this.running) return true;
+    try {
+      this.stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      this.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const src = this.audioCtx.createMediaStreamSource(this.stream);
+      this.analyser = this.audioCtx.createAnalyser();
+      this.analyser.fftSize = this.fftSize;
+      this.analyser.smoothingTimeConstant = 0.0;
+      src.connect(this.analyser);
+      this.fft = new Float32Array(this.analyser.frequencyBinCount);
+      this.timedom = new Float32Array(this.analyser.fftSize);
+      const sr = this.audioCtx.sampleRate;
+      const binWidth = sr / this.fftSize;
+      this.bassHiBin = Math.min(this.fft.length - 1, Math.max(2, Math.round(250 / binWidth)));
+      this.midHiBin = Math.min(this.fft.length - 1, Math.max(this.bassHiBin + 1, Math.round(4000 / binWidth)));
+      this.running = true;
+      return true;
+    } catch (e) {
+      console.warn("[audio] mic failed:", e);
+      this.running = false;
+      return false;
+    }
+  }
+  stop() {
+    if (this.stream) { for (const t of this.stream.getTracks()) t.stop(); this.stream = null; }
+    if (this.audioCtx) { try { this.audioCtx.close(); } catch{} this.audioCtx = null; }
+    this.running = false;
+    this.bandBass = this.bandMids = this.bandTreble = 0;
+    this._fast = this._prevFast = this._prevBass = 0;
+  }
+  toggle() { if (this.running) { this.stop(); return false; } else { this.start(); return true; } }
+  update(dt) {
+    this.beatPulse = Math.max(0, this.beatPulse - dt * 3.5);
+    if (!this.running || !this.analyser) return;
+    this.analyser.getFloatFrequencyData(this.fft);
+    this.analyser.getFloatTimeDomainData(this.timedom);
+    // RMS
+    let sumSq = 0;
+    for (let i = 0; i < this.timedom.length; i++) sumSq += this.timedom[i] * this.timedom[i];
+    const rms = Math.sqrt(sumSq / this.timedom.length);
+    this.audioLevel = rms;
+    this._peakLevel = Math.max(this._peakLevel * 0.985, rms, 0.01);
+    // Band sums from dB FFT — convert dB to linear mag.
+    const sumLin = (lo, hi) => {
+      let s = 0;
+      for (let i = lo; i < hi; i++) {
+        const db = this.fft[i];
+        if (db > -100) s += Math.pow(10, db / 20);
+      }
+      return s / Math.max(1, hi - lo);
+    };
+    const bassRaw = sumLin(1, this.bassHiBin);
+    const midsRaw = sumLin(this.bassHiBin, this.midHiBin);
+    const trebRaw = sumLin(this.midHiBin, this.fft.length);
+    this._peakBass = Math.max(this._peakBass * 0.985, bassRaw, 0.01);
+    this._peakMids = Math.max(this._peakMids * 0.985, midsRaw, 0.01);
+    this._peakTreble = Math.max(this._peakTreble * 0.985, trebRaw, 0.01);
+    const nb = Math.min(1, (bassRaw / Math.max(this._peakBass, 1e-4)) * this.sensitivity);
+    const nm = Math.min(1, (midsRaw / Math.max(this._peakMids, 1e-4)) * this.sensitivity);
+    const nt = Math.min(1, (trebRaw / Math.max(this._peakTreble, 1e-4)) * this.sensitivity);
+    this._prevBass = this.bandBass;
+    this.bandBass += 0.30 * (nb - this.bandBass);
+    this.bandMids += 0.15 * (nm - this.bandMids);
+    this.bandTreble += 0.45 * (nt - this.bandTreble);
+    const norm = Math.min(1, (rms / Math.max(this._peakLevel, 1e-4)) * this.sensitivity);
+    this._prevFast = this._fast;
+    this._fast += 0.4 * (norm - this._fast);
+    const onset = this._fast - this._prevFast;
+    const now = performance.now() / 1000;
+    if (onset > 0.15 && now - this._lastBeat > 0.30) {
+      this.beatPulse = 1.0;
+      this._lastBeat = now;
+    }
+  }
+}
+
+// ───────────────────────────────────────────────────────────────
+// CHAOS BACKDROP COMPOSITOR  (Canvas2D builds the per-cut frame)
+// ───────────────────────────────────────────────────────────────
+class ChaosCompositor {
+  constructor() {
+    this.canvas = document.createElement("canvas");
+    this.ctx = this.canvas.getContext("2d");
+  }
+  ensure(w, h) {
+    if (this.canvas.width !== w || this.canvas.height !== h) {
+      this.canvas.width = w; this.canvas.height = h;
+    }
+  }
+  drawCover(img, dx, dy, dw, dh) {
+    const ia = img.width / img.height;
+    const ta = dw / dh;
+    let sx=0, sy=0, sw=img.width, sh=img.height;
+    if (ia > ta) {
+      sw = img.height * ta;
+      sx = (img.width - sw) / 2;
+    } else {
+      sh = img.width / ta;
+      sy = (img.height - sh) / 2;
+    }
+    this.ctx.drawImage(img, sx, sy, sw, sh, dx, dy, dw, dh);
+  }
+  compose(mode, images, currentIdx) {
+    const w = this.canvas.width, h = this.canvas.height;
+    const ctx = this.ctx;
+    ctx.globalCompositeOperation = "source-over";
+    ctx.fillStyle = "#000"; ctx.fillRect(0, 0, w, h);
+    if (!images.length) return this.canvas;
+    const pick = () => images[(Math.random() * images.length) | 0];
+    if (mode === "single") {
+      this.drawCover(images[currentIdx], 0, 0, w, h);
+    } else if (mode === "2x2" || mode === "3x3" || mode === "4x4") {
+      const n = { "2x2": 2, "3x3": 3, "4x4": 4 }[mode];
+      const cw = w / n, ch = h / n;
+      for (let r = 0; r < n; r++) for (let c = 0; c < n; c++)
+        this.drawCover(pick(), c * cw, r * ch, cw, ch);
+    } else if (mode === "h_strip") {
+      const n = 8;
+      for (let k = 0; k < n; k++) {
+        const y0 = (k * h) / n, y1 = ((k + 1) * h) / n;
+        ctx.save(); ctx.beginPath(); ctx.rect(0, y0, w, y1 - y0); ctx.clip();
+        this.drawCover(pick(), 0, 0, w, h);
+        ctx.restore();
+      }
+    } else if (mode === "v_strip") {
+      const n = 8;
+      for (let k = 0; k < n; k++) {
+        const x0 = (k * w) / n, x1 = ((k + 1) * w) / n;
+        ctx.save(); ctx.beginPath(); ctx.rect(x0, 0, x1 - x0, h); ctx.clip();
+        this.drawCover(pick(), 0, 0, w, h);
+        ctx.restore();
+      }
+    } else if (mode === "diag_split") {
+      const a = pick(), b = pick();
+      const slopeSign = Math.random() < 0.5 ? 1 : -1;
+      const off = (Math.random() * 0.30 - 0.15) * h;
+      // Top half
+      ctx.save();
+      ctx.beginPath();
+      if (slopeSign > 0) {
+        ctx.moveTo(0, off); ctx.lineTo(w, off + h); ctx.lineTo(w, 0); ctx.lineTo(0, 0);
+      } else {
+        ctx.moveTo(0, h + off); ctx.lineTo(w, off); ctx.lineTo(w, 0); ctx.lineTo(0, 0);
+      }
+      ctx.closePath(); ctx.clip();
+      this.drawCover(a, 0, 0, w, h);
+      ctx.restore();
+      // Bottom half (complement)
+      ctx.save();
+      ctx.beginPath();
+      if (slopeSign > 0) {
+        ctx.moveTo(0, off); ctx.lineTo(w, off + h); ctx.lineTo(w, h); ctx.lineTo(0, h);
+      } else {
+        ctx.moveTo(0, h + off); ctx.lineTo(w, off); ctx.lineTo(w, h); ctx.lineTo(0, h);
+      }
+      ctx.closePath(); ctx.clip();
+      this.drawCover(b, 0, 0, w, h);
+      ctx.restore();
+    } else if (mode === "cascade") {
+      const n = [6, 8, 10, 12][(Math.random() * 4) | 0];
+      const step = w / n;
+      for (let k = 0; k < n; k++) {
+        const y0 = (k * h) / n, y1 = ((k + 1) * h) / n;
+        ctx.save();
+        ctx.beginPath(); ctx.rect(0, y0, w, y1 - y0); ctx.clip();
+        const shift = (k * step) % w;
+        this.drawCover(pick(), shift - w, 0, w, h);
+        this.drawCover(pick(), shift, 0, w, h);
+        ctx.restore();
+      }
+    } else if (mode === "quad_kaleido") {
+      const cw = w / 2, ch = h / 2;
+      const a = pick(), b = pick(), c2 = pick(), d = pick();
+      this.drawCover(a, 0, 0, cw, ch);
+      // top-right: mirror X
+      ctx.save(); ctx.translate(cw * 2, 0); ctx.scale(-1, 1);
+      this.drawCover(b, 0, 0, cw, ch);
+      ctx.restore();
+      // bottom-left: mirror Y
+      ctx.save(); ctx.translate(0, ch * 2); ctx.scale(1, -1);
+      this.drawCover(c2, 0, 0, cw, ch);
+      ctx.restore();
+      // bottom-right: mirror both
+      ctx.save(); ctx.translate(cw * 2, ch * 2); ctx.scale(-1, -1);
+      this.drawCover(d, 0, 0, cw, ch);
+      ctx.restore();
+    } else if (mode === "layer3" || mode === "layer4") {
+      const nl = mode === "layer3" ? 3 : 4;
+      const blends = ["screen", "difference", "overlay"];
+      const blend = blends[(Math.random() * blends.length) | 0];
+      // First layer normal
+      this.drawCover(pick(), 0, 0, w, h);
+      // Subsequent layers with shift + blend
+      for (let k = 1; k < nl; k++) {
+        ctx.globalCompositeOperation = blend;
+        const shift = (k - nl/2) * (w / 28);
+        this.drawCover(pick(), shift, 0, w, h);
+      }
+      ctx.globalCompositeOperation = "source-over";
+    }
+    return this.canvas;
+  }
+}
+
+// ───────────────────────────────────────────────────────────────
+// WEBGL HELPERS
+// ───────────────────────────────────────────────────────────────
+function compileShader(gl, type, src) {
+  const sh = gl.createShader(type);
+  gl.shaderSource(sh, src);
+  gl.compileShader(sh);
+  if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) {
+    console.error(gl.getShaderInfoLog(sh)); console.error(src);
+    throw new Error("shader compile fail");
+  }
+  return sh;
+}
+function makeProgram(gl, vsSrc, fsSrc) {
+  const vs = compileShader(gl, gl.VERTEX_SHADER, vsSrc);
+  const fs = compileShader(gl, gl.FRAGMENT_SHADER, fsSrc);
+  const p = gl.createProgram();
+  gl.attachShader(p, vs); gl.attachShader(p, fs);
+  gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) {
+    throw new Error("program link fail: " + gl.getProgramInfoLog(p));
+  }
+  return p;
+}
+function makePointVAO(gl, pos, col, seed) {
+  const n = pos.length / 3;
+  const data = new Float32Array(n * 7);
+  for (let i = 0; i < n; i++) {
+    data[i*7  ] = pos[i*3  ];
+    data[i*7+1] = pos[i*3+1];
+    data[i*7+2] = pos[i*3+2];
+    data[i*7+3] = col[i*3  ];
+    data[i*7+4] = col[i*3+1];
+    data[i*7+5] = col[i*3+2];
+    data[i*7+6] = seed[i];
+  }
+  const vbo = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+  gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
+  const vao = gl.createVertexArray();
+  gl.bindVertexArray(vao);
+  gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+  gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 28, 0);
+  gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1, 3, gl.FLOAT, false, 28, 12);
+  gl.enableVertexAttribArray(2); gl.vertexAttribPointer(2, 1, gl.FLOAT, false, 28, 24);
+  gl.bindVertexArray(null);
+  return { vao, vbo, n };
+}
+function makeLineVAO(gl, pos) {
+  const vbo = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+  gl.bufferData(gl.ARRAY_BUFFER, pos, gl.STATIC_DRAW);
+  const vao = gl.createVertexArray();
+  gl.bindVertexArray(vao);
+  gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+  gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 12, 0);
+  gl.bindVertexArray(null);
+  return { vao, n: pos.length / 3 };
+}
+
+// ───────────────────────────────────────────────────────────────
+// MAIN CLASS
+// ───────────────────────────────────────────────────────────────
+class CosmosBeater {
+  constructor() {
+    this.canvas = document.getElementById("glcanvas");
+    this.statusEl = document.getElementById("status");
+    this.gl = this.canvas.getContext("webgl2", { antialias: false, alpha: false, premultipliedAlpha: false });
+    if (!this.gl) { alert("WebGL2 not available."); throw new Error("no webgl2"); }
+    this.dpr = Math.min(2, window.devicePixelRatio || 1);
+    this.resize();
+    window.addEventListener("resize", () => this.resize());
+
+    this.cfg = CFG;
+    this.audio = new AudioReactor(this.cfg.audioSensitivity);
+    this.compositor = new ChaosCompositor();
+
+    this.images = [];               // HTMLCanvasElement[] (drawn into for getImageData)
+    this.imageTextures = [];        // WebGLTexture[]
+    this.imageAspects = [];
+    this.imagePointclouds = [];     // { vao, n } per image, lazy
+    this.currentImage = 0;
+
+    this.modeBackdrop = !!this.cfg.modesOnStart.backdrop;
+    this.modeChaos = !!this.cfg.modesOnStart.chaos;
+    this.modeTexsphere = false;
+    this.modePointcloud = false;
+    this.paused = false;
+    this.hudVisible = true;
+    this.spinBias = 0;
+
+    this.rotationY = 0; this.rotationX = 0;
+    this.camDist = 4.0; this.camDistTarget = 4.0;
+    this.bassKick = 0; this.beatFlash = 0;
+    this.tStart = performance.now() / 1000;
+
+    // Chaos state
+    this.chaosSubModes = ["single","2x2","3x3","4x4","h_strip","v_strip","diag_split","cascade","layer3","layer4","quad_kaleido"];
+    this.chaosSubWeights = [
+      ["single",7], ["quad_kaleido",5], ["2x2",4], ["diag_split",3],
+      ["3x3",2], ["h_strip",2], ["v_strip",2], ["layer3",2],
+      ["4x4",1], ["layer4",1], ["cascade",1],
+    ];
+    this.chaosSub = "single";
+    this.chaosMirror = 1;
+    this.chaosMirrorWeights = [[0,1],[1,3],[2,2],[3,4],[4,2]];
+    this.chaosFilter = 0; this.chaosFilterAmount = 0;
+    this.chaosFlash = 0; this.chaosBarGlitch = 0;
+    this.chaosPixelize = 0; this.chaosColorCrush = 0; this.chaosDotScreen = 0;
+    this.chaosMonoTint = [1,1,1]; this.chaosMonoAmount = 0;
+    this.chaosOverlay = 0; this.chaosOverlayPhase = 0;
+    this.chaosTintPalette = [
+      [0.98,0.10,0.85], [0.10,0.95,1.00], [0.40,1.00,0.20],
+      [1.00,0.18,0.18], [1.00,0.65,0.18], [1.00,1.00,1.00],
+    ];
+    this.chaosRotation = 0; this.chaosRotRate = 0.30;
+    this.chaosZoom = 1.0; this.chaosZoomTarget = 1.0;
+    this.chaosSwirl = 0; this.chaosSwirlTarget = 0;
+    this.chaosLastSwap = 0;
+    this.chaosTex = null; this.chaosTexW = 0; this.chaosTexH = 0;
+
+    this.bindKeyboard();
+    this.initGL();
+  }
+
+  resize() {
+    const w = Math.floor(window.innerWidth * this.dpr);
+    const h = Math.floor(window.innerHeight * this.dpr);
+    if (this.canvas.width !== w || this.canvas.height !== h) {
+      this.canvas.width = w; this.canvas.height = h;
+    }
+    this.displayW = w; this.displayH = h;
+    if (this.sceneFbo) this.makeSceneTarget();
+  }
+
+  initGL() {
+    const gl = this.gl;
+    this.progPoint = makeProgram(gl, POINT_VS, POINT_FS);
+    this.progLine  = makeProgram(gl, LINE_VS, LINE_FS);
+    this.progBackdrop = makeProgram(gl, FULLSCREEN_VS, BACKDROP_FS);
+    this.progChaos = makeProgram(gl, FULLSCREEN_VS, CHAOS_FS);
+    this.progPost = makeProgram(gl, FULLSCREEN_VS, POST_FS);
+
+    // Fullscreen triangle VBO/VAO
+    const fsVerts = new Float32Array([-1,-1, 3,-1, -1,3]);
+    this.fsVbo = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.fsVbo);
+    gl.bufferData(gl.ARRAY_BUFFER, fsVerts, gl.STATIC_DRAW);
+    this.fsVao = gl.createVertexArray();
+    gl.bindVertexArray(this.fsVao);
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.fsVbo);
+    gl.enableVertexAttribArray(0);
+    gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+    gl.bindVertexArray(null);
+
+    this.buildGeometry();
+    this.makeSceneTarget();
+  }
+
+  buildGeometry() {
+    const gl = this.gl;
+    // Sphere
+    const sn = this.cfg.spherePoints;
+    const spos = fibonacciSphere(sn, 1.0);
+    const scol = new Float32Array(sn * 3);
+    const sseed = new Float32Array(sn);
+    const rng = mulberry32(1);
+    for (let i = 0; i < sn; i++) {
+      const y = spos[i*3+1];
+      scol[i*3]   = 0.85 + y * 0.10;
+      scol[i*3+1] = 0.92 + y * 0.04;
+      scol[i*3+2] = 0.95 - y * 0.05;
+      sseed[i] = rng() * Math.PI * 2;
+    }
+    this.sphereGeo = makePointVAO(gl, spos, scol, sseed);
+
+    // Rings
+    const rn = this.cfg.ringPoints, rc = this.cfg.ringCount;
+    const rposAll = [];
+    const rcolAll = [];
+    const rseedAll = [];
+    for (let k = 0; k < rc; k++) {
+      const tilt = 25 + k * 35;
+      const radius = 1.05 + k * 0.04;
+      const rp = ringPoints(rn, radius, 0.03, tilt, 10 + k);
+      rposAll.push(rp);
+      const rcol = new Float32Array(rn * 3);
+      for (let i = 0; i < rn; i++) {
+        rcol[i*3]   = 0.65 + k * 0.10;
+        rcol[i*3+1] = 0.90;
+        rcol[i*3+2] = 0.95 - k * 0.05;
+      }
+      rcolAll.push(rcol);
+      const rs = new Float32Array(rn);
+      const rrng = mulberry32(100 + k);
+      for (let i = 0; i < rn; i++) rs[i] = rrng() * Math.PI * 2;
+      rseedAll.push(rs);
+    }
+    const flatPos = new Float32Array(rn * rc * 3);
+    const flatCol = new Float32Array(rn * rc * 3);
+    const flatSeed = new Float32Array(rn * rc);
+    for (let k = 0; k < rc; k++) {
+      flatPos.set(rposAll[k], k * rn * 3);
+      flatCol.set(rcolAll[k], k * rn * 3);
+      flatSeed.set(rseedAll[k], k * rn);
+    }
+    this.ringGeo = makePointVAO(gl, flatPos, flatCol, flatSeed);
+
+    // Stars
+    const stn = this.cfg.starfieldPoints;
+    const stpos = starfieldPoints(stn, 12);
+    const stcol = new Float32Array(stn * 3);
+    const stseed = new Float32Array(stn);
+    const stRng = mulberry32(99);
+    for (let i = 0; i < stn; i++) {
+      const warm = stRng() < 0.12;
+      stcol[i*3]   = warm ? 1.0 : 0.85;
+      stcol[i*3+1] = warm ? 0.75 : 0.85;
+      stcol[i*3+2] = warm ? 0.45 : 0.85;
+      stseed[i] = stRng() * Math.PI * 2;
+    }
+    this.starGeo = makePointVAO(gl, stpos, stcol, stseed);
+
+    // Ripple
+    const rpn = this.cfg.ripplePoints;
+    const rppos = ripplePoints(rpn, 14, 1.6, -1.55);
+    const rpN = rppos.length / 3;
+    const rpcol = new Float32Array(rpN * 3);
+    const rpseed = new Float32Array(rpN);
+    const rpRng = mulberry32(5);
+    for (let i = 0; i < rpN; i++) {
+      rpcol[i*3] = 0.85; rpcol[i*3+1] = 0.95; rpcol[i*3+2] = 1.0;
+      rpseed[i] = rpRng() * Math.PI * 2;
+    }
+    this.rippleGeo = makePointVAO(gl, rppos, rpcol, rpseed);
+
+    // Pyramids
+    const corners = [
+      [-3.5, 1.5, 0,  1],
+      [ 3.5, 1.5, 0,  1],
+      [-3.5,-1.5, 0, -1],
+      [ 3.5,-1.5, 0, -1],
+    ];
+    const edges = [];
+    for (const [cx, cy, cz, sgnY] of corners) {
+      const p = pyramidLines(cx, cy, cz, 0.55, 1.0, sgnY, 1.0);
+      for (let i = 0; i < p.length; i++) edges.push(p[i]);
+    }
+    this.lineGeo = makeLineVAO(gl, new Float32Array(edges));
+  }
+
+  makeSceneTarget() {
+    const gl = this.gl;
+    if (this.sceneTex) gl.deleteTexture(this.sceneTex);
+    if (this.sceneFbo) gl.deleteFramebuffer(this.sceneFbo);
+    this.sceneTex = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, this.sceneTex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, this.displayW, this.displayH, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    this.sceneFbo = gl.createFramebuffer();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.sceneFbo);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.sceneTex, 0);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  }
+
+  ensureChaosTex(w, h) {
+    const gl = this.gl;
+    if (this.chaosTex && this.chaosTexW === w && this.chaosTexH === h) return;
+    if (this.chaosTex) gl.deleteTexture(this.chaosTex);
+    this.chaosTex = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, this.chaosTex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    this.chaosTexW = w; this.chaosTexH = h;
+  }
+
+  // ── Image library ──────────────────────────────────────────
+  async loadImages() {
+    let names;
+    try {
+      const res = await fetch(this.cfg.imageManifestUrl);
+      names = await res.json();
+    } catch (e) {
+      this.status("manifest load failed: " + e.message);
+      return;
+    }
+    const initial = Math.min(this.cfg.initialLoadCount, names.length);
+    this.status(`loading ${initial}/${names.length} images…`);
+    for (let i = 0; i < initial; i++) {
+      await this.loadOne(names[i]).catch(() => {});
+      this.status(`loading ${i + 1}/${names.length}…`);
+    }
+    this.status(`${this.images.length} images ready · loading rest in background…`);
+    // Lazy load remainder
+    (async () => {
+      for (let i = initial; i < names.length; i++) {
+        await this.loadOne(names[i]).catch(() => {});
+      }
+      this.status(`${this.images.length} images ready`);
+    })();
+  }
+  async loadOne(name) {
+    const img = await new Promise((resolve, reject) => {
+      const im = new Image();
+      im.crossOrigin = "anonymous";
+      im.onload = () => resolve(im);
+      im.onerror = (e) => reject(e);
+      im.src = this.cfg.imageBaseUrl + encodeURIComponent(name);
+    });
+    // Draw into offscreen canvas for getImageData (used by pointcloud)
+    const c = document.createElement("canvas");
+    // Cap for memory
+    const maxW = 1024;
+    let w = img.width, h = img.height;
+    if (w > maxW) { h = h * (maxW / w); w = maxW; }
+    c.width = Math.floor(w); c.height = Math.floor(h);
+    c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+    const gl = this.gl;
+    const tex = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, c);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    this.images.push(c);
+    this.imageTextures.push(tex);
+    this.imageAspects.push(c.width / c.height);
+    this.imagePointclouds.push(null); // built on demand
+  }
+  ensurePointcloud(idx) {
+    if (this.imagePointclouds[idx]) return this.imagePointclouds[idx];
+    if (!this.images[idx]) return null;
+    const pc = imageToPointcloud(this.images[idx], this.cfg.imagePointcloudMaxPoints);
+    const geo = makePointVAO(this.gl, pc.pos, pc.col, pc.seed);
+    this.imagePointclouds[idx] = geo;
+    return geo;
+  }
+
+  // ── Chaos cut logic (rolls a new sub-mode + accents) ───────
+  chaosSwap() {
+    const pickWeighted = (table) => {
+      const total = table.reduce((s, [_, w]) => s + w, 0);
+      let r = Math.random() * total;
+      for (const [name, w] of table) { r -= w; if (r <= 0) return name; }
+      return table[0][0];
+    };
+    this.chaosSub = pickWeighted(this.chaosSubWeights);
+    if (Math.random() >= 0.40) this.chaosMirror = pickWeighted(this.chaosMirrorWeights);
+    if (this.imageTextures.length)
+      this.currentImage = (this.currentImage + 1) % this.imageTextures.length;
+    // Filter
+    if (Math.random() < this.cfg.chaosFilterChance) {
+      if (Math.random() < 0.12) { this.chaosFilter = 1; this.chaosFilterAmount = 0.30 + Math.random() * 0.25; }
+      else { this.chaosFilter = 2 + ((Math.random() * 3) | 0); this.chaosFilterAmount = 0.45 + Math.random() * 0.40; }
+    } else { this.chaosFilter = 0; this.chaosFilterAmount = 0; }
+    // Bar glitch
+    this.chaosBarGlitch = Math.random() < this.cfg.chaosGlitchChance ? (0.25 + Math.random() * 0.45) : 0;
+    // Accent (mutually exclusive)
+    this.chaosPixelize = 0; this.chaosColorCrush = 0; this.chaosDotScreen = 0; this.chaosMonoAmount = 0;
+    const r = Math.random();
+    if (r < 0.22) {
+      this.chaosMonoAmount = 0.78 + Math.random() * 0.22;
+      this.chaosMonoTint = this.chaosTintPalette[(Math.random() * this.chaosTintPalette.length) | 0];
+    } else if (r < 0.40) { this.chaosDotScreen = 0.35 + Math.random() * 0.5; }
+    else if (r < 0.55) { this.chaosPixelize = 0.40 + Math.random() * 0.45; }
+    else if (r < 0.65) { this.chaosColorCrush = 0.35 + Math.random() * 0.35; }
+    // Overlay
+    if (Math.random() < 0.40) {
+      this.chaosOverlay = 0.75 + Math.random() * 0.25;
+      this.chaosOverlayPhase += 0.6 + Math.random() * 1.9;
+    } else this.chaosOverlay = 0;
+    // White flash punch
+    this.chaosFlash = Math.max(this.chaosFlash, 0.25 + Math.random() * 0.30);
+    // Motion targets
+    this.chaosRotRate = (Math.random() - 0.5) * 0.9;
+    this.chaosZoomTarget = 0.92 + Math.random() * 0.26;
+    this.chaosSwirlTarget = (Math.random() < 0.08) ? (0.20 + Math.random() * 0.25) : (Math.random() * 0.1 - 0.05);
+    // Build composite at display size
+    const cw = Math.min(1920, this.displayW), ch = Math.min(1080, this.displayH);
+    this.compositor.ensure(cw, ch);
+    if (this.imageTextures.length) {
+      this.compositor.compose(this.chaosSub, this.images, this.currentImage);
+      this.ensureChaosTex(cw, ch);
+      const gl = this.gl;
+      gl.bindTexture(gl.TEXTURE_2D, this.chaosTex);
+      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, this.compositor.canvas);
+    }
+  }
+
+  // ── Keyboard ───────────────────────────────────────────────
+  bindKeyboard() {
+    document.addEventListener("keydown", (ev) => {
+      const k = ev.key;
+      if (k === "g" || k === "G") this.act("mic");
+      else if (k === "x" || k === "X") this.act("chaos");
+      else if (k === "y" || k === "Y") this.act("backdrop");
+      else if (k === "i" || k === "I") this.act("pointcloud");
+      else if (k === "t" || k === "T") this.act("texsphere");
+      else if (k === "j" || k === "J") this.act("prev");
+      else if (k === "k" || k === "K") this.act("next");
+      else if (k === "z" || k === "Z") this.camDistTarget = Math.max(2.0, this.camDistTarget - 0.3);
+      else if (k === "ArrowRight") this.spinBias = Math.min(2.0, this.spinBias + 0.2);
+      else if (k === "ArrowLeft") this.spinBias = Math.max(-2.0, this.spinBias - 0.2);
+      else if (k === " ") this.act("pause");
+      else if (k === "f" || k === "F") this.act("fullscreen");
+      else if (k === "h" || k === "H") {
+        this.hudVisible = !this.hudVisible;
+        document.querySelectorAll(".ctrl-bar, .hud-mini, .corner")
+          .forEach(el => el.classList.toggle("hidden", !this.hudVisible));
+      } else if (k === "Escape") {
+        if (document.fullscreenElement) document.exitFullscreen();
+      }
+    });
+    // Click handlers on bar buttons
+    document.querySelectorAll(".ctrl-btn").forEach(btn => {
+      btn.addEventListener("click", () => this.act(btn.dataset.act));
+    });
+  }
+
+  act(name) {
+    switch (name) {
+      case "mic": this.audio.toggle(); break;
+      case "chaos":
+        this.modeChaos = !this.modeChaos;
+        if (this.modeChaos) this.modeBackdrop = true;
+        break;
+      case "backdrop": this.modeBackdrop = !this.modeBackdrop; break;
+      case "pointcloud": this.modePointcloud = !this.modePointcloud; break;
+      case "texsphere": this.modeTexsphere = !this.modeTexsphere; break;
+      case "prev": this.cycleImage(-1); break;
+      case "next": this.cycleImage(+1); break;
+      case "pause": this.paused = !this.paused; break;
+      case "fullscreen":
+        if (!document.fullscreenElement) document.documentElement.requestFullscreen();
+        else document.exitFullscreen();
+        break;
+    }
+    this.syncUI();
+  }
+
+  syncUI() {
+    const set = (act, on) => {
+      const el = document.querySelector(`.ctrl-btn[data-act="${act}"]`);
+      if (el) el.classList.toggle("active", !!on);
+    };
+    set("mic", this.audio.running);
+    set("chaos", this.modeChaos);
+    set("backdrop", this.modeBackdrop);
+    set("pointcloud", this.modePointcloud);
+    set("texsphere", this.modeTexsphere);
+    set("pause", this.paused);
+    set("fullscreen", !!document.fullscreenElement);
+  }
+  cycleImage(d) {
+    if (!this.imageTextures.length) return;
+    this.currentImage = (this.currentImage + d + this.imageTextures.length) % this.imageTextures.length;
+  }
+  status(msg) { if (this.statusEl) this.statusEl.textContent = msg; }
+
+  // ── Render frame ───────────────────────────────────────────
+  render() {
+    const gl = this.gl;
+    const now = performance.now() / 1000;
+    const t = now - this.tStart;
+    const dt = Math.min(0.1, (this._lastT != null) ? (now - this._lastT) : 1/60);
+    this._lastT = now;
+
+    this.audio.update(dt);
+    // bass kick decay
+    this.bassKick = Math.max(0, this.bassKick - dt * 4);
+    this.beatFlash = Math.max(0, this.beatFlash - dt * 5);
+    this.chaosFlash = Math.max(0, this.chaosFlash - dt * 8);
+    this.chaosBarGlitch = Math.max(0, this.chaosBarGlitch - dt * 4);
+    // onset
+    const onset = this.audio._fast - this.audio._prevFast;
+    if (onset > this.cfg.chaosOnsetThreshold && now - (this._lastKick || 0) > this.cfg.chaosMinSwap) {
+      this.bassKick = 1.0;
+      this._lastKick = now;
+      if (this.modeChaos && this.imageTextures.length) {
+        this.chaosSwap();
+        this.chaosLastSwap = now;
+      } else if (this.imageTextures.length && (this.modeTexsphere || this.modePointcloud || this.modeBackdrop)) {
+        if (!this._lastImgSwap || now - this._lastImgSwap > 0.20) {
+          this.cycleImage(+1);
+          this._lastImgSwap = now;
+        }
+      }
+    }
+    // chaos auto cycle
+    if (this.modeChaos && now - this.chaosLastSwap > this.cfg.chaosAutoSwapSeconds && this.imageTextures.length) {
+      this.chaosSwap(); this.chaosLastSwap = now;
+    }
+    // chaos motion
+    if (this.modeChaos) {
+      this.chaosRotation += dt * (this.chaosRotRate + this.bassKick * 2.0);
+      this.chaosOverlayPhase += dt * (0.55 + this.bassKick * 1.6);
+      this.chaosZoom += 4 * dt * (this.chaosZoomTarget - this.chaosZoom);
+      this.chaosSwirl += 3 * dt * (this.chaosSwirlTarget - this.chaosSwirl);
+    }
+
+    // Camera + rotation
+    if (this.bassKick > 0.85) this.camDist = this.camDistTarget * 0.70;
+    else this.camDist += 6 * dt * (this.camDistTarget - this.camDist);
+    const autoRate = this.cfg.rotationSpeed * (1 + this.audio.bandBass * 1.5);
+    if (!this.paused) {
+      this.rotationY += dt * (autoRate + this.spinBias);
+      this.rotationX += dt * (autoRate * 0.13);
+    }
+
+    const aspect = this.displayW / Math.max(1, this.displayH);
+    const proj = mat4Perspective(45, aspect, 0.1, 100);
+    const view = mat4LookAt([0, 0.4, this.camDist], [0, 0, 0], [0, 1, 0]);
+    const rot = mat4Mul(mat4RotY(this.rotationY), mat4RotX(this.rotationX));
+    const breath = 1 + 0.05 * this.audio.bandBass + 0.10 * this.bassKick;
+    const modelSphere = mat4Mul(rot, mat4Scale(breath));
+    const centerImg = this.modePointcloud || this.modeTexsphere;
+    const ringScale = centerImg ? 1.55 : 1.0;
+    const ringTilt = (12 * this.audio.bandMids) * Math.PI / 180;
+    const modelRing = mat4Mul(mat4Mul(mat4RotY(this.rotationY * 1.7), mat4RotX(this.rotationX + ringTilt)), mat4Scale(ringScale));
+    const modelStar = mat4Identity();
+    const rippleS = 1 + 0.10 * Math.sin(t * 1.5) + 0.15 * this.audio.bandMids;
+    const modelRipple = mat4Scale(rippleS, 1, rippleS);
+
+    const mvpSphere = mat4Mul(proj, mat4Mul(view, modelSphere));
+    const mvpRing   = mat4Mul(proj, mat4Mul(view, modelRing));
+    const mvpStar   = mat4Mul(proj, mat4Mul(view, modelStar));
+    const mvpRipple = mat4Mul(proj, mat4Mul(view, modelRipple));
+    const mvpLine   = mat4Mul(proj, view);
+
+    // === Pass 1: scene FBO ===
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.sceneFbo);
+    gl.viewport(0, 0, this.displayW, this.displayH);
+    gl.clearColor(0.005, 0.004, 0.012, 1.0);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+
+    // Backdrop / chaos backdrop
+    if (this.modeBackdrop && this.imageTextures.length) {
+      gl.disable(gl.BLEND);
+      if (this.modeChaos && this.chaosTex) {
+        gl.useProgram(this.progChaos);
+        gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, this.chaosTex);
+        this.setU(this.progChaos, "uImage", "1i", 0);
+        this.setU(this.progChaos, "uAlpha", "1f", 0.95);
+        this.setU(this.progChaos, "uFlash", "1f", this.chaosFlash);
+        this.setU(this.progChaos, "uFilterMode", "1f", this.chaosFilter);
+        this.setU(this.progChaos, "uFilterAmount", "1f", this.chaosFilterAmount);
+        this.setU(this.progChaos, "uGlitchBars", "1f", this.chaosBarGlitch);
+        this.setU(this.progChaos, "uTime", "1f", t);
+        this.setU(this.progChaos, "uRotation", "1f", this.chaosRotation);
+        this.setU(this.progChaos, "uZoom", "1f", this.chaosZoom);
+        this.setU(this.progChaos, "uSwirl", "1f", this.chaosSwirl);
+        this.setU(this.progChaos, "uScreenAspect", "2f", [this.displayW, this.displayH]);
+        this.setU(this.progChaos, "uMirror", "1f", this.chaosMirror);
+        this.setU(this.progChaos, "uPixelize", "1f", this.chaosPixelize);
+        this.setU(this.progChaos, "uColorCrush", "1f", this.chaosColorCrush);
+        this.setU(this.progChaos, "uDotScreen", "1f", this.chaosDotScreen);
+        this.setU(this.progChaos, "uMonoTint", "3f", this.chaosMonoTint);
+        this.setU(this.progChaos, "uMonoTintAmount", "1f", this.chaosMonoAmount);
+        this.setU(this.progChaos, "uOverlay", "1f", this.chaosOverlay);
+        this.setU(this.progChaos, "uOverlayPhase", "1f", this.chaosOverlayPhase);
+        gl.bindVertexArray(this.fsVao);
+        gl.drawArrays(gl.TRIANGLES, 0, 3);
+      } else {
+        gl.useProgram(this.progBackdrop);
+        gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, this.imageTextures[this.currentImage]);
+        this.setU(this.progBackdrop, "uImage", "1i", 0);
+        this.setU(this.progBackdrop, "uAlpha", "1f", 1.0);
+        this.setU(this.progBackdrop, "uContrast", "1f", 1.0);
+        this.setU(this.progBackdrop, "uImageAspect", "2f", [this.imageAspects[this.currentImage], this.displayW / this.displayH]);
+        gl.bindVertexArray(this.fsVao);
+        gl.drawArrays(gl.TRIANGLES, 0, 3);
+      }
+    }
+
+    // Additive blending for particles
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.ONE, gl.ONE);
+    gl.useProgram(this.progPoint);
+    const viewPos = [0, 0.4, this.camDist];
+    const trebleAmt = Math.max(0.15, Math.min(1, this.audio.bandTreble * 1.6));
+
+    // Stars
+    this.setU(this.progPoint, "uGlowBoost", "1f", 0);
+    this.setU(this.progPoint, "uMVP", "m4", mvpStar);
+    this.setU(this.progPoint, "uPointSize", "1f", 2.0);
+    this.setU(this.progPoint, "uTime", "1f", t);
+    this.setU(this.progPoint, "uTwinkle", "1f", trebleAmt);
+    this.setU(this.progPoint, "uBrightness", "1f", 0.95);
+    this.setU(this.progPoint, "uViewPos", "3f", viewPos);
+    gl.bindVertexArray(this.starGeo.vao);
+    gl.drawArrays(gl.POINTS, 0, this.starGeo.n);
+
+    // Ripple
+    this.setU(this.progPoint, "uMVP", "m4", mvpRipple);
+    this.setU(this.progPoint, "uPointSize", "1f", 3.0);
+    this.setU(this.progPoint, "uBrightness", "1f", 0.85 + 0.45 * this.audio.bandMids);
+    gl.bindVertexArray(this.rippleGeo.vao);
+    gl.drawArrays(gl.POINTS, 0, this.rippleGeo.n);
+
+    // Sphere or pointcloud
+    this.setU(this.progPoint, "uMVP", "m4", mvpSphere);
+    if (this.modePointcloud && this.imageTextures.length) {
+      const pc = this.ensurePointcloud(this.currentImage);
+      if (pc) {
+        this.setU(this.progPoint, "uPointSize", "1f", 14.0);
+        this.setU(this.progPoint, "uBrightness", "1f", 1.70 + 0.40 * this.audio.bandBass + 0.6 * this.bassKick);
+        this.setU(this.progPoint, "uGlowBoost", "1f", 0.75 + 0.25 * this.bassKick);
+        gl.bindVertexArray(pc.vao);
+        gl.drawArrays(gl.POINTS, 0, pc.n);
+      }
+    } else {
+      const sphereBase = this.modeTexsphere ? 1.20 : 1.15;
+      const glow = this.modeTexsphere ? (0.45 + 0.20 * this.bassKick) : 0.0;
+      const sphereSize = this.modeTexsphere ? 9.0 : 4.0;
+      this.setU(this.progPoint, "uPointSize", "1f", sphereSize);
+      this.setU(this.progPoint, "uBrightness", "1f", sphereBase + 0.22 * this.audio.bandBass + 0.30 * this.bassKick);
+      this.setU(this.progPoint, "uGlowBoost", "1f", glow);
+      gl.bindVertexArray(this.sphereGeo.vao);
+      gl.drawArrays(gl.POINTS, 0, this.sphereGeo.n);
+    }
+
+    // Rings
+    const ringBrightMult = centerImg ? 0.55 : 1.0;
+    this.setU(this.progPoint, "uGlowBoost", "1f", 0);
+    this.setU(this.progPoint, "uMVP", "m4", mvpRing);
+    this.setU(this.progPoint, "uPointSize", "1f", 3.0);
+    this.setU(this.progPoint, "uBrightness", "1f", (1.00 + 0.40 * this.audio.bandMids) * ringBrightMult);
+    gl.bindVertexArray(this.ringGeo.vao);
+    gl.drawArrays(gl.POINTS, 0, this.ringGeo.n);
+
+    // Pyramids
+    gl.useProgram(this.progLine);
+    this.setU(this.progLine, "uMVP", "m4", mvpLine);
+    const fc = 1 - this.beatFlash * 0.6;
+    this.setU(this.progLine, "uColor", "3f", [fc, 0.85 + this.beatFlash * 0.10, 1 - this.beatFlash * 0.4]);
+    this.setU(this.progLine, "uAlpha", "1f", 0.55 + 0.35 * this.audio.bandBass + 0.4 * this.beatFlash);
+    gl.bindVertexArray(this.lineGeo.vao);
+    gl.drawArrays(gl.LINES, 0, this.lineGeo.n);
+
+    // === Pass 2: post-process to screen ===
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.viewport(0, 0, this.displayW, this.displayH);
+    gl.clearColor(0, 0, 0, 1);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+    gl.disable(gl.BLEND);
+    gl.useProgram(this.progPost);
+    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, this.sceneTex);
+    this.setU(this.progPost, "uScene", "1i", 0);
+    this.setU(this.progPost, "uResolution", "2f", [this.displayW, this.displayH]);
+    this.setU(this.progPost, "uTime", "1f", t);
+    this.setU(this.progPost, "uFlareStrength", "1f", this.cfg.flareStrength);
+    this.setU(this.progPost, "uGrain", "1f", this.cfg.grainAmount);
+    this.setU(this.progPost, "uChroma", "1f", 0.012 + this.bassKick * 0.05);
+    this.setU(this.progPost, "uVignette", "1f", 0.45);
+    this.setU(this.progPost, "uBassKick", "1f", this.bassKick);
+    this.setU(this.progPost, "uGlitchBase", "1f", this.cfg.glitchBase);
+    this.setU(this.progPost, "uGlitchKick", "1f", this.cfg.glitchKick);
+    this.setU(this.progPost, "uTreble", "1f", this.audio.bandTreble);
+    gl.bindVertexArray(this.fsVao);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+    requestAnimationFrame(() => this.render());
+  }
+
+  setU(prog, name, type, val) {
+    const gl = this.gl;
+    const loc = gl.getUniformLocation(prog, name);
+    if (loc == null) return;
+    if (type === "1f") gl.uniform1f(loc, val);
+    else if (type === "1i") gl.uniform1i(loc, val);
+    else if (type === "2f") gl.uniform2f(loc, val[0], val[1]);
+    else if (type === "3f") gl.uniform3f(loc, val[0], val[1], val[2]);
+    else if (type === "m4") gl.uniformMatrix4fv(loc, false, val);
+  }
+}
+
+// ───────────────────────────────────────────────────────────────
+// BOOT
+// ───────────────────────────────────────────────────────────────
+const startBtn = document.getElementById("start-btn");
+const gate = document.getElementById("gate");
+startBtn.addEventListener("click", async () => {
+  gate.classList.add("hidden");
+  const beater = new CosmosBeater();
+  beater.syncUI();
+  await beater.loadImages();
+  await beater.audio.start();
+  beater.syncUI();
+  beater.render();
+});
+</script>
+</body>
+</html>
