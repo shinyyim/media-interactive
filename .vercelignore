@@ -1,0 +1,38 @@
+# Heavy / local-only — never ship
+ref/
+ref_frames/
+obsidian/
+assets/
+src/
+
+# zeo: drop everything except the gemini-generation _all_images library
+zeo/midjourney-generation/
+zeo/performance/
+zeo/gemini-generation/Audio/
+zeo/gemini-generation/Prompts/
+zeo/gemini-generation/generate.py
+zeo/gemini-generation/requirements.txt
+zeo/gemini-generation/Generations/evangelion_diverse_20260527_225903/
+zeo/gemini-generation/Generations/evangelion_dreamlike_20260527_232830/
+zeo/gemini-generation/Generations/evangelion_expanded_20260527_104948/
+zeo/gemini-generation/Generations/evangelion_expanded_20260527_105016/
+zeo/gemini-generation/Generations/evangelion_expanded_20260527_105025/
+zeo/gemini-generation/Generations/evangelion_mood_20260525_235449/
+
+# Orphan htmls not part of stage
+/index.html
+orbit.html
+orbit.js
+phosphor.html
+ref_board.html
+stage-visual.html
+timeline.html
+
+# Dev / OS
+.git/
+.vercel/
+node_modules/
+.DS_Store
+*.swp
+.idea/
+.vscode/
