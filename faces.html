@@ -462,7 +462,18 @@
   }
 
   // ---------- NEON GRID (audio-reactive: bass pumps cell, beat highlights random lines) ----------
+  // mixed neon — each grid line keeps a stable color by its index (no per-frame flicker)
+  const GRID_COLORS = [
+    '57,255,20',    // neon green
+    '255,23,68',    // electric red
+    '0,255,224',    // cyan
+    '255,20,147',   // neon pink
+    '255,255,255',  // white
+  ];
+  const gridCol = (i) => GRID_COLORS[((i % GRID_COLORS.length) + GRID_COLORS.length) % GRID_COLORS.length];
   let gridScroll = 0;
+  let gridColIdx = 0;       // whole grid is ONE color; advances on each beat
+  let gridBeatLatch = false;
   function drawGrid(W, H, beat) {
     const aBas = state.audio ? audio.sBas : 0;
     const aMid = state.audio ? audio.sMid : 0;
@@ -476,11 +487,22 @@
 
     const alpha = 0.08 + 0.22 * aRms + 0.22 * beat;
 
+    // advance to a new neon color on each beat (rising-edge latch → one change per beat)
+    if (beat > 0.45) {
+      if (!gridBeatLatch) {
+        gridColIdx = (gridColIdx + 1 + Math.floor(Math.random() * (GRID_COLORS.length - 1))) % GRID_COLORS.length;
+        gridBeatLatch = true;
+      }
+    } else if (beat < 0.20) {
+      gridBeatLatch = false;
+    }
+    const rgb = gridCol(gridColIdx);   // whole grid: one color at a time
+
     ctx.save();
     ctx.lineWidth = 1;
-    ctx.strokeStyle = `rgba(255, 255, 255, ${alpha})`;
-    ctx.shadowColor = 'rgba(255, 255, 255, 0.55)';
     ctx.shadowBlur = 3 + 6 * aRms + 6 * beat;
+    ctx.strokeStyle = `rgba(${rgb}, ${alpha})`;
+    ctx.shadowColor = `rgba(${rgb}, 0.55)`;
 
     // vertical lines (scroll left → right with audio)
     for (let x = -gridScroll; x <= W + cell; x += cell) {
@@ -495,9 +517,10 @@
       ctx.stroke();
     }
 
-    // beat highlight — pick a few random rows/cols, brighter + bigger glow
+    // beat highlight — pick a few random rows/cols, same color, brighter + bigger glow
     if (beat > 0.30) {
-      ctx.strokeStyle = `rgba(255, 255, 255, ${0.35 + 0.5 * beat})`;
+      ctx.strokeStyle = `rgba(${rgb}, ${0.45 + 0.5 * beat})`;
+      ctx.shadowColor = `rgba(${rgb}, 0.85)`;
       ctx.shadowBlur = 8 + 14 * beat;
       const n = 1 + Math.floor(beat * 4);
       for (let i = 0; i < n; i++) {

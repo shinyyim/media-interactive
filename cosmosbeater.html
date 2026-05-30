@@ -1226,6 +1226,8 @@ class CosmosBeater {
 
   // ── Chaos cut logic (rolls a new sub-mode + accents) ───────
   chaosSwap() {
+    // guard: never build textures at 0 size (hidden iframe) → texImage2D "no canvas"
+    if (!this.displayW || !this.displayH) return;
     const pickWeighted = (table) => {
       const total = table.reduce((s, [_, w]) => s + w, 0);
       let r = Math.random() * total;
@@ -1349,6 +1351,12 @@ class CosmosBeater {
   // ── Render frame ───────────────────────────────────────────
   render() {
     const gl = this.gl;
+    // Skip while hidden (display:none iframe → window.innerWidth 0 → 0-size canvas/FBO).
+    // Re-sync size each frame so rendering auto-resumes when the scene becomes visible.
+    const vw = Math.floor(window.innerWidth * this.dpr);
+    const vh = Math.floor(window.innerHeight * this.dpr);
+    if (vw === 0 || vh === 0) { requestAnimationFrame(() => this.render()); return; }
+    if (vw !== this.canvas.width || vh !== this.canvas.height) this.resize();
     const now = performance.now() / 1000;
     const t = now - this.tStart;
     const dt = Math.min(0.1, (this._lastT != null) ? (now - this._lastT) : 1/60);

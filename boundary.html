@@ -385,7 +385,7 @@ function perf() { return (typeof performance !== "undefined" ? performance.now()
 // ---- beat trigger ----
 function onBeat(strength) {
   const now = perf();
-  if (now - lastBeatAt < 150) return;   // debounce
+  if (now - lastBeatAt < 110) return;   // debounce
   lastBeatAt = now;
   autoTimer = 0;
 
@@ -414,7 +414,7 @@ async function startMic() {
     const src = audioCtx.createMediaStreamSource(stream);
     analyser = audioCtx.createAnalyser();
     analyser.fftSize = 1024;
-    analyser.smoothingTimeConstant = 0.7;
+    analyser.smoothingTimeConstant = 0.5;
     src.connect(analyser);
     freq = new Uint8Array(analyser.frequencyBinCount);
     micOn = true;
@@ -466,14 +466,14 @@ function loop() {
   const localAvg = bassHist.reduce((a, b) => a + b, 0) / bassHist.length;
   const variance = bassHist.reduce((a, v) => a + (v - localAvg) ** 2, 0) / bassHist.length;
   // adaptive threshold (Frédéric Patin style)
-  const thr = localAvg * (1.35 + variance * 12) + 0.02;
-  if (bass > thr && bass > 0.12) {
+  const thr = localAvg * (1.22 + variance * 12) + 0.02;
+  if (bass > thr && bass > 0.10) {
     onBeat(bass / Math.max(localAvg, 0.001));
   }
 
   // fallback: if no beat for a while, auto-advance so it never stalls
   autoTimer += 16;
-  const stale = micOn ? 2600 : 1200;
+  const stale = micOn ? 1600 : 1200;
   if (autoTimer > stale) { onBeat(1.0); }
 
   // glitch decay (+ idle treble shimmer)
