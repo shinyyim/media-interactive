@@ -970,8 +970,22 @@
       document.getElementById('ctrlBar').classList.add('visible');
       initDetector();
     } catch (e) {
-      console.error(e);
-      noteEl.textContent = 'camera denied. allow access and reload.';
+      console.error('[faces] getUserMedia failed:', e.name, e.message);
+      let msg;
+      switch (e.name) {
+        case 'NotReadableError':   // device busy — another tab/app holds it
+        case 'AbortError':
+          msg = 'camera in use by another tab/app. close it and reload.'; break;
+        case 'NotAllowedError':
+        case 'SecurityError':
+          msg = 'camera blocked. allow access in the address bar and reload.'; break;
+        case 'NotFoundError':
+        case 'OverconstrainedError':
+          msg = 'no camera found.'; break;
+        default:
+          msg = 'camera error: ' + e.name + '. reload to retry.';
+      }
+      noteEl.textContent = msg;
       noteEl.classList.add('err');
     }
   }
